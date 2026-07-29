@@ -1,0 +1,22 @@
+{
+  "name": "@cte/ui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Preact + signals renderer and pluggable transports for the meter surfaces (live, replay, simulator).",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./theme.css": "./src/theme.css"
+  },
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@cte/core": "workspace:*",
+    "@preact/signals": "^2.0.4",
+    "preact": "^10.25.4"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "esbuild src/index.ts --bundle --platform=browser --format=esm --outfile=dist/index.js"
+  }
+}

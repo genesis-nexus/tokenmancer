@@ -1,0 +1,93 @@
+{
+  "name": "tokenometer",
+  "displayName": "Tokenometer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "See what every AI coding prompt really costs — a live AI-Credit meter, session replay, and a what-if simulator, right inside your editor.",
+  "license": "MIT",
+  "publisher": "GenesisNexus",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/genesis-nexus/tokenometer"
+  },
+  "homepage": "https://github.com/genesis-nexus/tokenometer",
+  "bugs": {
+    "url": "https://github.com/genesis-nexus/tokenometer/issues"
+  },
+  "type": "commonjs",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["Visualization", "Other"],
+  "keywords": ["ai", "tokens", "ai-credits", "cost", "usage", "copilot"],
+  "icon": "media/icon.png",
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "tokenometer",
+          "title": "Tokenometer",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "tokenometer": [
+        {
+          "type": "webview",
+          "id": "tokenometer.live",
+          "name": "Live Meter"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "tokenometer.openLiveMeter",
+        "title": "Open Live Meter",
+        "category": "Tokenometer"
+      },
+      {
+        "command": "tokenometer.openReplay",
+        "title": "Open Session Replay",
+        "category": "Tokenometer"
+      },
+      {
+        "command": "tokenometer.openSimulator",
+        "title": "Open What-if Simulator",
+        "category": "Tokenometer"
+      },
+      {
+        "command": "tokenometer.pickWorkspace",
+        "title": "Tail a Workspace’s Log…",
+        "category": "Tokenometer"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "tokenometer.pickWorkspace",
+          "when": "view == tokenometer.live",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@cte/core": "workspace:*",
+    "@cte/node-host": "workspace:*",
+    "@cte/ui": "workspace:*",
+    "@preact/signals": "^2.0.4",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.2.1",
+    "preact": "^10.25.4"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "node build.mjs",
+    "build:prod": "node build.mjs --production",
+    "package": "node build.mjs --production && vsce package --no-dependencies -o dist/tokenometer.vsix"
+  }
+}

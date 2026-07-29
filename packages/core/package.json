@@ -1,0 +1,23 @@
+{
+  "name": "@cte/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Runtime-agnostic core: pricing model, AIC math, Copilot log parser, event contract, tokenizer.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./pricing": "./src/pricing/index.ts",
+    "./parse": "./src/parse/index.ts",
+    "./tokenizer": "./src/tokenizer/index.ts",
+    "./contract": "./src/contract/events.ts"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "esbuild src/index.ts --bundle --platform=neutral --format=esm --packages=external --outfile=dist/index.js"
+  },
+  "dependencies": {
+    "js-tiktoken": "^1.0.21"
+  }
+}

@@ -1,0 +1,11 @@
+src/
+*.ts
+*.tsx
+*.map
+build.mjs
+tsconfig.json
+vitest.config.*
+.vscode/
+node_modules/
+.DS_Store
+*.log

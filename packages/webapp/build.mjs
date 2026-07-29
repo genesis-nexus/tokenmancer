@@ -1,0 +1,44 @@
+import { mkdirSync, rmSync } from 'node:fs';
+import { build } from 'esbuild';
+
+const prod = process.argv.includes('--production');
+
+rmSync('dist', { recursive: true, force: true });
+mkdirSync('dist/public', { recursive: true });
+
+// 1) Node server — single self-contained ESM file.
+await build({
+  entryPoints: ['src/main.ts'],
+  outfile: 'dist/server.js',
+  bundle: true,
+  platform: 'node',
+  format: 'esm',
+  target: 'node20',
+  banner: { js: '#!/usr/bin/env node' },
+  sourcemap: !prod,
+  minify: prod,
+  logLevel: 'info',
+});
+
+// 2) Browser surfaces — Preact + shared UI, tokenizer bundled offline. Each entry
+//    emits <name>.js and <name>.css into dist/public (served by the server).
+await build({
+  entryPoints: [
+    '../ui/src/surfaces/live.tsx',
+    '../ui/src/surfaces/replay.tsx',
+    '../ui/src/surfaces/simulator.tsx',
+  ],
+  outdir: 'dist/public',
+  entryNames: '[name]',
+  bundle: true,
+  platform: 'browser',
+  format: 'esm',
+  jsx: 'automatic',
+  jsxImportSource: 'preact',
+  target: ['es2020'],
+  sourcemap: !prod,
+  minify: true,
+  logLevel: 'info',
+});
+
+console.log('webapp build complete');

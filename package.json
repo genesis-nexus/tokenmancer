@@ -1,0 +1,37 @@
+{
+  "name": "copilot-token-economics",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Measure and visualize GitHub Copilot token/AI-Credit economics — local-first web app + VS Code extension.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@10.18.3",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test",
+    "start": "pnpm --filter copilot-tokenometer build && node packages/webapp/dist/server.js",
+    "meter": "pnpm run start -- --open",
+    "publish:webapp:dry-run": "pnpm run check && pnpm --filter copilot-tokenometer build:prod && pnpm --filter copilot-tokenometer publish --dry-run --no-git-checks --access public",
+    "publish:webapp": "pnpm run check && pnpm --filter copilot-tokenometer build:prod && pnpm --filter copilot-tokenometer publish --no-git-checks --provenance --access public"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/node": "^22.10.2",
+    "esbuild": "^0.24.2",
+    "jsdom": "^29.1.1",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["@biomejs/biome", "esbuild", "@vscode/vsce-sign", "keytar"]
+  }
+}
