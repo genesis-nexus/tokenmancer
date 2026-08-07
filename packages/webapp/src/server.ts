@@ -9,6 +9,7 @@ import {
   type InboxController,
   type TailController,
   discoverWorkspaces,
+  getWorkspaceAnalyticsWithInsights,
   isContained,
   isSafeLogFileName,
   loadLogFile,
@@ -40,6 +41,7 @@ const SURFACE_TITLE: Record<string, string> = {
   live: 'Copilot Live Meter',
   replay: 'Copilot Session Replay',
   simulator: 'Copilot Token Simulator',
+  analytics: 'Copilot Workspace Analytics',
 };
 
 function htmlShell(surface: string, token: string, nonce: string): string {
@@ -261,6 +263,10 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
       servePage(res, 'simulator');
       return;
     }
+    if (method === 'GET' && urlPath === '/analytics') {
+      servePage(res, 'analytics');
+      return;
+    }
     if (method === 'GET' && urlPath.startsWith('/public/')) {
       serveAsset(res, urlPath.slice('/public/'.length));
       return;
@@ -340,6 +346,22 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
       sendJson(res, 200, { ok: true });
       return;
     }
+    if (method === 'GET' && urlPath === '/api/analytics') {
+      const q = new URLSearchParams(rawUrl.slice(rawUrl.indexOf('?') + 1));
+      const ws = q.get('ws') ?? '';
+      const days = Number(q.get('days') ?? 30);
+      const r = resolveWorkspaceSessions(ws);
+      if (!r) {
+        sendText(res, 404, 'workspace not found');
+        return;
+      }
+      const result = getWorkspaceAnalyticsWithInsights(r.ws, {
+        timeWindowDays: Number.isFinite(days) ? days : 30,
+        defaultModel: opts.rateModel,
+      });
+      sendJson(res, 200, result);
+      return;
+    }
 
     sendText(res, 404, 'not found');
   });
@@ -381,7 +403,7 @@ export async function main(): Promise<void> {
   const opts = parseArgs(process.argv.slice(2));
   const s = await startServer(opts);
   const link = `${s.url}?token=${s.token}`;
-  console.log('GitHub Copilot Tokenometer — local-first meter');
+  console.log('GitHub Copilot Tokenmancer — local-first meter');
   console.log(`  ▶ open: ${link}`);
   console.log(
     `  prompts: ${opts.showPrompts ? 'shown (--show-prompts)' : 'redacted by default'} · paths: ${opts.exposePaths ? 'exposed' : 'hidden'}`,

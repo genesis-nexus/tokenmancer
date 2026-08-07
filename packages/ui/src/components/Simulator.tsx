@@ -10,6 +10,7 @@ import {
 import { useMemo, useState } from 'preact/hooks';
 import { fmtCr, fmtTok } from '../format.js';
 import { SEG, SEG_COLOR, type TooltipData } from '../pricing-ui.js';
+import { ThemeToggle } from './ThemeToggle.js';
 import { TooltipLayer, ttAttr } from './TooltipLayer.js';
 
 type Scenario = 'none' | 'first' | 'cached';
@@ -71,11 +72,14 @@ export function Simulator({
             spend it.
           </p>
         </div>
-        {navHref ? (
-          <a class="navlink" href={navHref}>
-            {navText}
-          </a>
-        ) : null}
+        <div class="mastRight">
+          {navHref ? (
+            <a class="navlink" href={navHref}>
+              {navText}
+            </a>
+          ) : null}
+          <ThemeToggle />
+        </div>
       </header>
 
       <div class="loop">

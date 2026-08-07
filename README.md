@@ -1,11 +1,11 @@
-# GitHub Copilot Tokenometer
+# GitHub Copilot Tokenmancer
 
 See what every GitHub Copilot prompt **really costs** — a live AI-Credit meter, session replay, and a what-if simulator. Two ways to run it, one shared engine:
 
-- **Local-first web app** — `npx copilot-tokenometer`, opens in your browser.
+- **Local-first web app** — `npx tokenmancer`, opens in your browser.
 - **VS Code extension** — the meter lives in your editor's sidebar.
 
-Every prompt fans out into a loop of model calls (plan → read → search → edit → verify). Tokenometer reads Copilot's own agent debug log and lays each loop out as a priced, step-by-step timeline: which model ran each step, the context window growing call after call, and a cost bar splitting every bill into **cache-read / cache-write / fresh-input / output** — with output, a few hundred tokens, routinely the biggest slice.
+Every prompt fans out into a loop of model calls (plan → read → search → edit → verify). Tokenmancer reads Copilot's own agent debug log and lays each loop out as a priced, step-by-step timeline: which model ran each step, the context window growing call after call, and a cost bar splitting every bill into **cache-read / cache-write / fresh-input / output** — with output, a few hundred tokens, routinely the biggest slice.
 
 Everything runs **on your machine**. Prompt text is **redacted by default**; only token counts and costs leave the parser.
 
@@ -14,7 +14,7 @@ Everything runs **on your machine**. Prompt text is **redacted by default**; onl
 ### Web app (no install)
 
 ```bash
-npx copilot-tokenometer --open        # once published to npm
+npx tokenmancer --open        # once published to npm
 ```
 
 ### From this repo
@@ -38,11 +38,11 @@ Enable Copilot's agent debug log in VS Code settings first:
 ### VS Code extension
 
 ```bash
-pnpm --filter tokenometer package   # → dist/tokenometer.vsix
-code --install-extension packages/extension/dist/tokenometer.vsix
+pnpm --filter tokenmancer package   # → dist/tokenmancer.vsix
+code --install-extension packages/extension/dist/tokenmancer.vsix
 ```
 
-The **Tokenometer** activity-bar view meters the current workspace; the command palette opens Session Replay, the Simulator, or points the meter at another workspace.
+The **Tokenmancer** activity-bar view meters the current workspace; the command palette opens Session Replay, the Simulator, or points the meter at another workspace.
 
 ## Surfaces
 
@@ -61,7 +61,7 @@ packages/
   core/        runtime-agnostic: pricing model, AIC math, log parser, event contract, o200k tokenizer
   node-host/   Node-only: workspace/log discovery, jsonl tailer, on-disk instruction measurement
   ui/          Preact + signals renderer + pluggable transports (SSE, replay, postMessage)
-  webapp/      → npm package `copilot-tokenometer`: hardened local-first HTTP/SSE server
+  webapp/      → npm package `tokenmancer`: hardened local-first HTTP/SSE server
   extension/   → VS Code extension: host bridge + webviews over postMessage
 proof/         copilot_token_lab.py — the tiktoken golden oracle the pricing tests lock against
 tools/         scaffold-mfe.js — deterministic demo-repo generator (dev fixture)

@@ -1,5 +1,5 @@
 import type { ComponentChildren } from 'preact';
-import { useEffect } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import {
   connection,
   dispatch,
@@ -8,10 +8,13 @@ import {
   instructions,
   resetSession,
 } from '../state/store.js';
-import type { MeterTransport } from '../transport.js';
+import type { MeterTransport, SettingStatus } from '../transport.js';
 import { InstrPanel } from './InstrPanel.js';
 import { LoopCard } from './LoopCard.js';
 import { Readout } from './Readout.js';
+import { SettingsBanner } from './SettingsBanner.js';
+import { SetupGuide } from './SetupGuide.js';
+import { ThemeToggle } from './ThemeToggle.js';
 import { TooltipLayer } from './TooltipLayer.js';
 import { WorkspaceBar } from './WorkspaceBar.js';
 
@@ -25,8 +28,7 @@ export interface AppProps {
   /** Wire the transport's live stream on mount (true for live, false for replay). */
   subscribe?: boolean;
   showConnection?: boolean;
-  navHref?: string;
-  navText?: string;
+  navLinks?: { href: string; text: string }[];
   emptyText?: string;
 }
 
@@ -37,8 +39,11 @@ export function App({
   sourceBar,
   subscribe = true,
   showConnection = true,
-  navHref = '/sessions',
-  navText = 'Past sessions →',
+  navLinks = [
+    { href: '/analytics', text: 'Analytics →' },
+    { href: '/sessions', text: 'Past sessions →' },
+    { href: '/simulator', text: 'What-if simulator →' },
+  ],
   emptyText = 'Waiting for Copilot activity — run an Agent request in VS Code, or paste a usage block into the inbox file.',
 }: AppProps) {
   useEffect(() => {
@@ -53,6 +58,22 @@ export function App({
       transport.dispose();
     };
   }, [transport, subscribe]);
+
+  // VS Code only: transport.checkSettings exists there and nowhere else, so
+  // this doubles as the switch between the actionable banner and the static
+  // web-app setup guide.
+  const [settings, setSettings] = useState<SettingStatus[] | null>(null);
+  useEffect(() => {
+    if (!transport.checkSettings) return;
+    const check = () =>
+      transport
+        .checkSettings?.()
+        .then(setSettings)
+        .catch(() => {});
+    check();
+    document.addEventListener('visibilitychange', check);
+    return () => document.removeEventListener('visibilitychange', check);
+  }, [transport]);
 
   const conn = connection.value;
   const gs = groups.value;
@@ -88,13 +109,20 @@ export function App({
               </span>
             </span>
           ) : null}
-          {navHref ? (
-            <a class="navlink" href={navHref}>
-              {navText}
+          {navLinks.map((link) => (
+            <a class="navlink" href={link.href} key={link.href}>
+              {link.text}
             </a>
-          ) : null}
+          ))}
+          <ThemeToggle />
         </div>
       </header>
+
+      {settings ? (
+        <SettingsBanner settings={settings} onOpenSetting={(key) => transport.openSetting?.(key)} />
+      ) : !transport.checkSettings ? (
+        <SetupGuide />
+      ) : null}
 
       {bar}
 

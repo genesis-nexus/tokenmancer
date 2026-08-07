@@ -38,9 +38,13 @@ jobs:
           fi
 
       - name: Build (production)
-        run: pnpm --filter copilot-tokenometer build:prod
+        run: |
+          PKG_NAME=$(node -p "require('./packages/webapp/package.json').name")
+          pnpm --filter "$PKG_NAME" build:prod
 
       - name: Publish
-        run: pnpm --filter copilot-tokenometer publish --no-git-checks --provenance --access public
+        run: |
+          PKG_NAME=$(node -p "require('./packages/webapp/package.json').name")
+          pnpm --filter "$PKG_NAME" publish --no-git-checks --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -18,20 +18,28 @@
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test",
-    "start": "pnpm --filter copilot-tokenometer build && node packages/webapp/dist/server.js",
+    "start": "pnpm --filter tokenmancer build && node packages/webapp/dist/server.js",
     "meter": "pnpm run start -- --open",
-    "publish:webapp:dry-run": "pnpm run check && pnpm --filter copilot-tokenometer build:prod && pnpm --filter copilot-tokenometer publish --dry-run --no-git-checks --access public",
-    "publish:webapp": "pnpm run check && pnpm --filter copilot-tokenometer build:prod && pnpm --filter copilot-tokenometer publish --no-git-checks --provenance --access public"
+    "publish:webapp:dry-run": "pnpm run check && pnpm --filter tokenmancer build:prod && pnpm --filter tokenmancer publish --dry-run --no-git-checks --access public",
+    "publish:webapp": "pnpm run check && pnpm --filter tokenmancer build:prod && pnpm --filter tokenmancer publish --no-git-checks --provenance --access public"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@types/node": "^22.10.2",
-    "esbuild": "^0.24.2",
+    "esbuild": "^0.25.0",
     "jsdom": "^29.1.1",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "vitest": "^3.2.6"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["@biomejs/biome", "esbuild", "@vscode/vsce-sign", "keytar"]
+    "onlyBuiltDependencies": ["@biomejs/biome", "esbuild", "@vscode/vsce-sign", "keytar"],
+    "overrides": {
+      "brace-expansion": "^5.0.9",
+      "fast-uri": "^3.1.5",
+      "js-yaml": "^4.3.1",
+      "postcss": "^8.5.23",
+      "undici": "^7.29.0",
+      "vite": "^7.0.0"
+    }
   }
 }

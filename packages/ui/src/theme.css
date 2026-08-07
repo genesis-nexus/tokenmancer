@@ -1,6 +1,13 @@
 /* Shared palette + component styling. Ported verbatim from the original live
-   meter so the Preact rebuild is visually identical across web + webview. */
+   meter so the Preact rebuild is visually identical across web + webview.
+ *
+ * Dark is the base (matches the original meter); light engages from the OS
+ * setting, and an explicit [data-theme] stamp — set by the theme toggle —
+ * wins over both. Mirrors the token structure in surfaces/analytics.css so
+ * the two token sets never drift apart. */
 :root {
+  color-scheme: dark;
+
   --page: #0d0d0d;
   --surface: #1a1a19;
   --surface2: #242423;
@@ -18,6 +25,43 @@
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
+
+@media (prefers-color-scheme: light) {
+  :root:where(:not([data-theme="dark"])) {
+    color-scheme: light;
+
+    --page: #f5f5f3;
+    --surface: #ffffff;
+    --surface2: #f0efec;
+    --ink: #0b0b0b;
+    --ink2: #52514e;
+    --muted: #898781;
+    --line: rgba(11, 11, 11, 0.1);
+    --track: #e1e0d9;
+    --read: #2a78d6;
+    --write: #008300;
+    --fresh: #e87ba4;
+    --out: #eda100;
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --page: #f5f5f3;
+  --surface: #ffffff;
+  --surface2: #f0efec;
+  --ink: #0b0b0b;
+  --ink2: #52514e;
+  --muted: #898781;
+  --line: rgba(11, 11, 11, 0.1);
+  --track: #e1e0d9;
+  --read: #2a78d6;
+  --write: #008300;
+  --fresh: #e87ba4;
+  --out: #eda100;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -29,6 +73,7 @@ body {
   font-size: 13px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  transition: background-color .15s ease, color .15s ease;
 }
 .wrap {
   max-width: 980px;
@@ -90,6 +135,29 @@ a.navlink {
 }
 a.navlink:hover {
   color: var(--ink);
+  border-color: var(--ink2);
+}
+
+.themeToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink2);
+  cursor: pointer;
+  flex: none;
+}
+.themeToggle:hover {
+  border-color: var(--muted);
+  color: var(--ink);
+}
+.themeToggle:focus-visible {
+  outline: none;
   border-color: var(--ink2);
 }
 
@@ -179,7 +247,7 @@ select option {
   position: sticky;
   top: 0;
   z-index: 20;
-  background: rgba(13, 13, 13, 0.92);
+  background: color-mix(in srgb, var(--page) 92%, transparent);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--line);
   margin: 0 -20px;
@@ -416,6 +484,73 @@ details.help .hbody b {
   color: var(--ink2);
   font-weight: 600;
 }
+.setupGuide .hbody ol {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+.setupGuide .hbody li {
+  margin: 4px 0;
+}
+.setupGuide .hbody pre {
+  margin: 8px 0;
+  background: var(--page);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink2);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.setupGuide .hbody code,
+.setupGuide .hbody kbd {
+  font-family: var(--mono);
+  font-size: 11px;
+  background: var(--surface2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+/* setup / settings banner */
+.setupBanner {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--out) 45%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--out) 10%, var(--surface));
+}
+.setupBannerIcon {
+  color: var(--out);
+  font-size: 15px;
+  line-height: 1.3;
+  flex: none;
+}
+.setupBannerBody {
+  min-width: 0;
+}
+.setupBannerTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.setupBannerText {
+  font-size: 12px;
+  color: var(--ink2);
+  margin-top: 2px;
+  line-height: 1.5;
+}
+.setupBannerActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
 
 /* loops */
 .feed {
@@ -480,6 +615,12 @@ details.help .hbody b {
 }
 .loopPrompt .noPrompt {
   color: var(--muted);
+}
+.loopPrompt .redactedTag {
+  font-style: italic;
+  font-family: var(--mono);
+  font-size: 12px;
+  cursor: help;
 }
 .barHit {
   padding: 6px 0;

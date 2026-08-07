@@ -5,6 +5,7 @@ import {
   type TailController,
   discoverSessionsIn,
   discoverWorkspaces,
+  getWorkspaceAnalyticsWithInsights,
   isContained,
   isSafeLogFileName,
   loadLogFile,
@@ -18,11 +19,21 @@ export interface Poster {
   post(msg: unknown): void;
 }
 
+/** Status of a VS Code setting Tokenmancer depends on to read a complete log. */
+export interface RequiredSettingStatus {
+  key: string;
+  label: string;
+  enabled: boolean;
+}
+
 export interface BridgeOptions {
   /** debug-logs dir to auto-tail on `subscribe` (the current workspace by default). */
   defaultLogsDir?: string;
   showPrompts?: boolean;
   rateModel?: string;
+  /** Injected by the extension host (vscode-free bridge can't read settings itself). */
+  checkSettings?: () => RequiredSettingStatus[];
+  openSetting?: (key: string) => void | Promise<void>;
 }
 
 /**
@@ -42,6 +53,11 @@ export class MeterBridge {
       showPrompts: opts.showPrompts ?? false,
       salt: randomBytes(8).toString('hex'),
     };
+  }
+
+  /** Live-toggle prompt visibility (e.g. the user flipped the VS Code setting). */
+  setShowPrompts(v: boolean): void {
+    this.redactOpts.showPrompts = v;
   }
 
   /** Route a message received from the webview. */
@@ -71,8 +87,18 @@ export class MeterBridge {
   }
 
   private dispatch(method: string, params: unknown): unknown {
-    const p = (params ?? {}) as { ws?: string; session?: string; log?: string };
+    const p = (params ?? {}) as {
+      ws?: string;
+      session?: string;
+      log?: string;
+      timeWindowDays?: number;
+      key?: string;
+    };
     switch (method) {
+      case 'checkSettings':
+        return this.opts.checkSettings?.() ?? [];
+      case 'openSetting':
+        return Promise.resolve(this.opts.openSetting?.(p.key ?? '')).then(() => ({ ok: true }));
       case 'listWorkspaces':
         return discoverWorkspaces().map((w) => ({
           id: w.id,
@@ -104,6 +130,14 @@ export class MeterBridge {
         if (!target) throw new Error('workspace/log not found');
         this.startTail(target.abs);
         return { workspace: target.workspace, log: target.log };
+      }
+      case 'getWorkspaceAnalytics': {
+        const r = resolveWorkspaceSessions(p.ws ?? '');
+        if (!r) throw new Error('workspace not found');
+        return getWorkspaceAnalyticsWithInsights(r.ws, {
+          timeWindowDays: p.timeWindowDays ?? 30,
+          defaultModel: this.opts.rateModel,
+        });
       }
       case 'newSession':
         this.poster.post({ type: 'event', event: { kind: 'control', control: 'session' } });

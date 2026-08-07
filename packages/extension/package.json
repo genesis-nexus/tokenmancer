@@ -1,6 +1,6 @@
 {
-  "name": "tokenometer",
-  "displayName": "Tokenometer",
+  "name": "tokenmancer",
+  "displayName": "Tokenmancer",
   "version": "0.1.0",
   "private": true,
   "description": "See what every AI coding prompt really costs — a live AI-Credit meter, session replay, and a what-if simulator, right inside your editor.",
@@ -8,11 +8,11 @@
   "publisher": "GenesisNexus",
   "repository": {
     "type": "git",
-    "url": "https://github.com/genesis-nexus/tokenometer"
+    "url": "https://github.com/genesis-nexus/tokenmancer"
   },
-  "homepage": "https://github.com/genesis-nexus/tokenometer",
+  "homepage": "https://github.com/genesis-nexus/tokenmancer",
   "bugs": {
-    "url": "https://github.com/genesis-nexus/tokenometer/issues"
+    "url": "https://github.com/genesis-nexus/tokenmancer/issues"
   },
   "type": "commonjs",
   "engines": {
@@ -27,51 +27,66 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "tokenometer",
-          "title": "Tokenometer",
+          "id": "tokenmancer",
+          "title": "Tokenmancer",
           "icon": "media/icon.svg"
         }
       ]
     },
     "views": {
-      "tokenometer": [
+      "tokenmancer": [
         {
           "type": "webview",
-          "id": "tokenometer.live",
+          "id": "tokenmancer.live",
           "name": "Live Meter"
         }
       ]
     },
     "commands": [
       {
-        "command": "tokenometer.openLiveMeter",
+        "command": "tokenmancer.openLiveMeter",
         "title": "Open Live Meter",
-        "category": "Tokenometer"
+        "category": "Tokenmancer"
       },
       {
-        "command": "tokenometer.openReplay",
+        "command": "tokenmancer.openReplay",
         "title": "Open Session Replay",
-        "category": "Tokenometer"
+        "category": "Tokenmancer"
       },
       {
-        "command": "tokenometer.openSimulator",
+        "command": "tokenmancer.openSimulator",
         "title": "Open What-if Simulator",
-        "category": "Tokenometer"
+        "category": "Tokenmancer"
       },
       {
-        "command": "tokenometer.pickWorkspace",
+        "command": "tokenmancer.openAnalytics",
+        "title": "Open Workspace Analytics",
+        "category": "Tokenmancer"
+      },
+      {
+        "command": "tokenmancer.pickWorkspace",
         "title": "Tail a Workspace’s Log…",
-        "category": "Tokenometer"
+        "category": "Tokenmancer"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "tokenometer.pickWorkspace",
-          "when": "view == tokenometer.live",
+          "command": "tokenmancer.pickWorkspace",
+          "when": "view == tokenmancer.live",
           "group": "navigation"
         }
       ]
+    },
+    "configuration": {
+      "title": "Tokenmancer",
+      "properties": {
+        "tokenmancer.showPrompts": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show prompt text in the meter, session replay, and analytics. Off by default for privacy — token counts and costs are always shown either way."
+        }
+      }
     }
   },
   "dependencies": {},
@@ -88,6 +103,6 @@
     "typecheck": "tsc --noEmit",
     "build": "node build.mjs",
     "build:prod": "node build.mjs --production",
-    "package": "node build.mjs --production && vsce package --no-dependencies -o dist/tokenometer.vsix"
+    "package": "node build.mjs --production && vsce package --no-dependencies -o dist/tokenmancer.vsix"
   }
 }

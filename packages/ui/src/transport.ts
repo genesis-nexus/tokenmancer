@@ -1,4 +1,4 @@
-import type { MeterEvent } from '@cte/core';
+import type { AnalyticsInsight, MeterEvent, WorkspaceAnalytics } from '@cte/core';
 import type { ConnState } from './state/store.js';
 
 export interface WorkspaceSummary {
@@ -18,6 +18,18 @@ export interface SessionSummary {
   logFiles: string[];
 }
 
+export interface AnalyticsResult {
+  analytics: WorkspaceAnalytics;
+  insights: AnalyticsInsight[];
+}
+
+/** Status of a VS Code setting Tokenmancer depends on to read a complete log. */
+export interface SettingStatus {
+  key: string;
+  label: string;
+  enabled: boolean;
+}
+
 /**
  * One renderer, pluggable source. The web app implements this over SSE + fetch;
  * the VS Code extension implements it over postMessage (added in P6). The App
@@ -31,6 +43,12 @@ export interface MeterTransport {
   loadSession(wsId: string, sessionId: string, log?: string): Promise<MeterEvent[]>;
   tailWorkspace(wsId: string): Promise<{ workspace?: string; log?: string }>;
   newSession(): Promise<void>;
+  getWorkspaceAnalytics?(wsId: string, timeWindowDays?: number): Promise<AnalyticsResult>;
+  /** VS Code only: read the Copilot settings Tokenmancer depends on. Absent on
+   *  transports (web app) that have no VS Code settings API to query. */
+  checkSettings?(): Promise<SettingStatus[]>;
+  /** VS Code only: jump straight to the named setting in the Settings UI. */
+  openSetting?(key: string): Promise<void>;
   dispose(): void;
 }
 
@@ -112,6 +130,10 @@ export class SseTransport implements MeterTransport {
   }
   async newSession(): Promise<void> {
     await this.post('/session/new');
+  }
+  getWorkspaceAnalytics(wsId: string, timeWindowDays = 30): Promise<AnalyticsResult> {
+    const q = new URLSearchParams({ ws: wsId, days: String(timeWindowDays) });
+    return this.get<AnalyticsResult>(`/api/analytics?${q.toString()}`);
   }
   dispose(): void {
     this.es?.close();
@@ -243,6 +265,15 @@ export class PostMessageTransport implements MeterTransport {
   }
   newSession(): Promise<void> {
     return this.rpc('newSession');
+  }
+  getWorkspaceAnalytics(wsId: string, timeWindowDays = 30): Promise<AnalyticsResult> {
+    return this.rpc('getWorkspaceAnalytics', { ws: wsId, timeWindowDays });
+  }
+  checkSettings(): Promise<SettingStatus[]> {
+    return this.rpc('checkSettings');
+  }
+  openSetting(key: string): Promise<void> {
+    return this.rpc('openSetting', { key });
   }
   dispose(): void {
     window.removeEventListener('message', this.onMessage);

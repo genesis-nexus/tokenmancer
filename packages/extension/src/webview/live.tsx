@@ -4,4 +4,4 @@ import { render } from 'preact';
 
 const transport = new PostMessageTransport();
 const root = document.getElementById('app');
-if (root) render(<App transport={transport} navHref="" navText="" />, root);
+if (root) render(<App transport={transport} navLinks={[]} />, root);

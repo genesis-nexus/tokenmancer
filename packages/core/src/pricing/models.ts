@@ -36,6 +36,24 @@ export const MODELS = {
 
 export type ModelId = keyof typeof MODELS;
 
+/**
+ * Nominal context window (total input tokens) per model, used to turn a call's
+ * `prompt` count into a "how full was the context" ratio. These are the published
+ * windows, not Copilot's per-request cap — which is lower and not exposed in the
+ * logs — so treat the ratio as a pressure signal, not an exact fill gauge.
+ */
+export const CONTEXT_WINDOWS = {
+  'gpt-5-mini': 128_000,
+  'gpt-5.3-codex': 272_000,
+  'gemini-3-flash': 1_000_000,
+  'claude-haiku-4.5': 200_000,
+  'gpt-4.1': 1_000_000,
+  'claude-sonnet-4.6': 200_000,
+  'gemini-3.1-pro': 1_000_000,
+  'claude-opus-4.8': 200_000,
+  'gpt-5.5': 272_000,
+} satisfies Record<ModelId, number>;
+
 /** Credits in the non-rolling monthly seat pool. */
 export const POOL = 5000;
 /** USD per AI-Credit. */
@@ -51,17 +69,37 @@ export function rateFor(
   model: string | null | undefined,
   fallback: ModelId = DEFAULT_MODEL,
 ): ModelRate {
+  return MODELS[modelIdFor(model, fallback)];
+}
+
+/**
+ * The same fuzzy match as `rateFor`, but returns the canonical id — so callers
+ * that need something other than the rate row (context window, tier) resolve a
+ * log's model name through exactly one table.
+ */
+export function modelIdFor(
+  model: string | null | undefined,
+  fallback: ModelId = DEFAULT_MODEL,
+): ModelId {
   const n = String(model ?? '')
     .toLowerCase()
     .replace(/[-_ .]/g, '');
-  if (n.includes('opus')) return MODELS['claude-opus-4.8'];
-  if (n.includes('sonnet')) return MODELS['claude-sonnet-4.6'];
-  if (n.includes('haiku')) return MODELS['claude-haiku-4.5'];
-  if (n.includes('codex')) return MODELS['gpt-5.3-codex'];
-  if (n.includes('gpt5mini') || n.includes('gpt5.mini')) return MODELS['gpt-5-mini'];
-  if (n.includes('gpt55') || n.includes('gpt5.5')) return MODELS['gpt-5.5'];
-  if (n.includes('gpt41')) return MODELS['gpt-4.1'];
-  if (n.includes('flash')) return MODELS['gemini-3-flash'];
-  if (n.includes('gemini')) return MODELS['gemini-3.1-pro'];
-  return MODELS[fallback];
+  if (n.includes('opus')) return 'claude-opus-4.8';
+  if (n.includes('sonnet')) return 'claude-sonnet-4.6';
+  if (n.includes('haiku')) return 'claude-haiku-4.5';
+  if (n.includes('codex')) return 'gpt-5.3-codex';
+  if (n.includes('gpt5mini') || n.includes('gpt5.mini')) return 'gpt-5-mini';
+  if (n.includes('gpt55') || n.includes('gpt5.5')) return 'gpt-5.5';
+  if (n.includes('gpt41')) return 'gpt-4.1';
+  if (n.includes('flash')) return 'gemini-3-flash';
+  if (n.includes('gemini')) return 'gemini-3.1-pro';
+  return fallback;
+}
+
+/** Nominal context window for a log's model name. */
+export function contextWindowFor(
+  model: string | null | undefined,
+  fallback: ModelId = DEFAULT_MODEL,
+): number {
+  return CONTEXT_WINDOWS[modelIdFor(model, fallback)];
 }

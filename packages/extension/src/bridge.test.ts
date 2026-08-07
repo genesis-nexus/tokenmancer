@@ -80,4 +80,47 @@ describe('MeterBridge', () => {
     expect(msgs.some((m) => m.type === 'rpc-error' && m.id === 9)).toBe(true);
     bridge.dispose();
   });
+
+  it('answers checkSettings via the injected callback, and defaults to empty', async () => {
+    const { poster, msgs } = collector();
+    const bridge = new MeterBridge(poster, {
+      checkSettings: () => [{ key: 'a.b', label: 'A B', enabled: false }],
+    });
+    bridge.handle({ type: 'rpc', id: 1, method: 'checkSettings' });
+    await new Promise((r) => setTimeout(r, 10));
+    const reply = msgs.find((m) => m.type === 'rpc-result' && m.id === 1);
+    expect(reply?.result).toEqual([{ key: 'a.b', label: 'A B', enabled: false }]);
+    bridge.dispose();
+
+    const { poster: p2, msgs: m2 } = collector();
+    const bridgeNoOpt = new MeterBridge(p2, {});
+    bridgeNoOpt.handle({ type: 'rpc', id: 2, method: 'checkSettings' });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(m2.find((m) => m.type === 'rpc-result' && m.id === 2)?.result).toEqual([]);
+    bridgeNoOpt.dispose();
+  });
+
+  it('routes openSetting to the injected callback with the requested key', async () => {
+    const { poster, msgs } = collector();
+    let opened = '';
+    const bridge = new MeterBridge(poster, {
+      openSetting: (key) => {
+        opened = key;
+      },
+    });
+    bridge.handle({ type: 'rpc', id: 3, method: 'openSetting', params: { key: 'a.b.c' } });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(opened).toBe('a.b.c');
+    expect(msgs.find((m) => m.type === 'rpc-result' && m.id === 3)?.result).toEqual({ ok: true });
+    bridge.dispose();
+  });
+
+  it('setShowPrompts flips redaction live for subsequent tail output', () => {
+    const { poster, msgs } = collector();
+    const bridge = new MeterBridge(poster, { defaultLogsDir: makeLogsDir('ws-c') });
+    bridge.setShowPrompts(true);
+    bridge.handle({ type: 'subscribe' });
+    expect(JSON.stringify(msgs)).toContain('SECRET');
+    bridge.dispose();
+  });
 });

@@ -55,7 +55,20 @@ export function LoopCard({ group: g, hasInstr, fresh }: LoopCardProps) {
           </span>
         </div>
         <div class="loopPrompt">
-          {g.promptText ? g.promptText : <span class="noPrompt">[prompt text not in log]</span>}
+          {g.promptText ? (
+            g.redacted ? (
+              <span
+                class="noPrompt redactedTag"
+                title="Prompt text is redacted by default. Pass --show-prompts (web app) or enable Tokenmancer › Show Prompts (VS Code setting) to reveal it."
+              >
+                🔒 {g.promptText}
+              </span>
+            ) : (
+              g.promptText
+            )
+          ) : (
+            <span class="noPrompt">[No prompt text found in the debug log for this step]</span>
+          )}
         </div>
         {/* biome-ignore lint/a11y/noNoninteractiveTabindex: focusable so the cost split is reachable by keyboard */}
         <div class="barHit" data-tt={ttAttr(loopTT)} tabIndex={0}>

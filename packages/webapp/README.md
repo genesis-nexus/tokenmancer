@@ -1,9 +1,9 @@
-# copilot-tokenometer
+# tokenmancer
 
 A local-first meter that prices every GitHub Copilot agent step (AI-Credits), live from the debug log. Runs entirely on your machine — the browser is just the UI.
 
 ```bash
-npx copilot-tokenometer --open
+npx tokenmancer --open
 ```
 
 Prints a loopback URL with a per-run token. Pick a workspace and hit **Tail live**, or open **Past sessions** to replay a recorded run.
@@ -25,4 +25,4 @@ Enable Copilot's agent debug log in VS Code settings:
 "github.copilot.chat.agentDebugLog.fileLogging.enabled": true
 ```
 
-Loopback-only, token-gated, prompts redacted by default. MIT-licensed. Part of [GitHub Copilot Tokenometer](https://github.com/github-copilot-tokenometer/copilot-tokenometer).
+Loopback-only, token-gated, prompts redacted by default. MIT-licensed. Part of [Tokenmancer](https://github.com/genesis-nexus/tokenmancer).

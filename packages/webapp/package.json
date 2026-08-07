@@ -1,17 +1,17 @@
 {
-  "name": "copilot-tokenometer",
-  "version": "0.1.0",
-  "description": "GitHub Copilot Tokenometer — a local-first meter that prices every Copilot agent step (AI-Credits), live from the debug log. Runs on your machine; the browser is the UI.",
+  "name": "tokenmancer",
+  "version": "0.1.1",
+  "description": "GitHub Copilot Tokenmancer — a local-first meter that prices every Copilot agent step (AI-Credits), live from the debug log. Runs on your machine; the browser is the UI.",
   "license": "MIT",
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "https://github.com/genesis-nexus/tokenometer",
+    "url": "https://github.com/genesis-nexus/tokenmancer",
     "directory": "packages/webapp"
   },
-  "homepage": "https://github.com/genesis-nexus/tokenometer",
+  "homepage": "https://github.com/genesis-nexus/tokenmancer",
   "bugs": {
-    "url": "https://github.com/genesis-nexus/tokenometer/issues"
+    "url": "https://github.com/genesis-nexus/tokenmancer/issues"
   },
   "keywords": [
     "github-copilot",
@@ -24,7 +24,7 @@
     "llm"
   ],
   "bin": {
-    "copilot-tokenometer": "./dist/server.js"
+    "tokenmancer": "./dist/server.js"
   },
   "files": ["dist", "README.md"],
   "engines": {

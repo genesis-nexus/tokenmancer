@@ -19,7 +19,12 @@ await build({
 // 2) Webview bundles — Preact + shared UI + tokenizer, all bundled offline (no
 //    CDN). IIFE so no module loader is needed under the webview CSP.
 await build({
-  entryPoints: ['src/webview/live.tsx', 'src/webview/replay.tsx', 'src/webview/simulator.tsx'],
+  entryPoints: [
+    'src/webview/live.tsx',
+    'src/webview/replay.tsx',
+    'src/webview/simulator.tsx',
+    'src/webview/analytics.tsx',
+  ],
   outdir: 'dist/webview',
   entryNames: '[name]',
   bundle: true,

@@ -6,6 +6,8 @@ export interface LoopGroup {
   groupId: string;
   index: number;
   promptText: string;
+  /** true when promptText is a redaction tag, not real prompt text. */
+  redacted: boolean;
   startTs: number;
   steps: StepEvent[];
   aic: number;
@@ -27,6 +29,7 @@ export const connection = signal<ConnState>('connecting');
 export const freshGroups = signal<Set<string>>(new Set());
 
 const MEANINGLESS = /unavailable|not in log|no linked|prompt text not in log/i;
+const REDACTED_TAG = /^‹redacted/;
 
 export function addStep(ev: StepEvent): void {
   const list = groups.value;
@@ -37,6 +40,7 @@ export function addStep(ev: StepEvent): void {
       groupId: ev.groupId,
       index: ev.promptGroupIndex,
       promptText: '',
+      redacted: false,
       startTs: ev.ts,
       steps: [],
       aic: 0,
@@ -53,7 +57,15 @@ export function addStep(ev: StepEvent): void {
     fresh.add(g.groupId);
     freshGroups.value = fresh;
   }
-  if (ev.userPrompt && !MEANINGLESS.test(ev.userPrompt)) g.promptText = ev.userPrompt;
+  if (ev.userPrompt && !MEANINGLESS.test(ev.userPrompt)) {
+    g.promptText = ev.userPrompt;
+    g.redacted = false;
+  } else if (!g.promptText && ev.promptSnippet && REDACTED_TAG.test(ev.promptSnippet)) {
+    // Server intentionally stripped the prompt (privacy default) — show the
+    // opaque tag instead of implying the log itself is missing the data.
+    g.promptText = ev.promptSnippet;
+    g.redacted = true;
+  }
   g.steps = [...g.steps, ev];
   g.aic += ev.aic;
   g.prompt += ev.prompt;

@@ -27,6 +27,7 @@ await build({
     '../ui/src/surfaces/live.tsx',
     '../ui/src/surfaces/replay.tsx',
     '../ui/src/surfaces/simulator.tsx',
+    '../ui/src/surfaces/analytics.tsx',
   ],
   outdir: 'dist/public',
   entryNames: '[name]',
