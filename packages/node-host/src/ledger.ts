@@ -187,8 +187,3 @@ export function totalsOf(entries: readonly LedgerEntry[]): SpendTotals {
   }
   return { credits: Number(credits.toFixed(6)), tokens, steps: entries.length };
 }
-
-/** Create the state directory up front so the first append is not the first mkdir. */
-export function initLedger(): void {
-  ensureDir(stateDir());
-}

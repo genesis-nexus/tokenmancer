@@ -18,7 +18,7 @@ const SCOPES: readonly BudgetScope[] = ['global', 'workspace'];
 
 type Leaf =
   | { t: 'bool' }
-  | { t: 'num'; min?: number; max?: number; int?: boolean }
+  | { t: 'num'; min?: number; int?: boolean }
   | { t: 'str'; nonEmpty?: boolean; oneOf?: readonly string[] }
   | { t: 'rules' };
 
@@ -56,20 +56,8 @@ const SPEC: Group = {
       statusBar: { t: 'bool' },
     },
   },
-  radar: {
-    enabled: { t: 'bool' },
-    loopCredits: { t: 'num', min: 0 },
-    loopSteps: { t: 'num', min: 0, int: true },
-    toolContextTokens: { t: 'num', min: 0, int: true },
-    repeatReadCount: { t: 'num', min: 1, int: true },
-  },
-  thresholds: {
-    highContextRatio: { t: 'num', min: 0, max: 1 },
-    shortPromptChars: { t: 'num', min: 0, int: true },
-  },
   analytics: {
     timeWindowDays: { t: 'num', min: 1, int: true },
-    cacheEnabled: { t: 'bool' },
   },
   ui: {
     defaultDetail: { t: 'str', oneOf: ['simple', 'detailed'] },
@@ -99,10 +87,6 @@ function checkLeaf(spec: Leaf, v: unknown, path: string, problems: string[]): un
       }
       if (spec.min != null && v < spec.min) {
         problems.push(`${path}: ${v} is below the minimum of ${spec.min}`);
-        return undefined;
-      }
-      if (spec.max != null && v > spec.max) {
-        problems.push(`${path}: ${v} is above the maximum of ${spec.max}`);
         return undefined;
       }
       return v;

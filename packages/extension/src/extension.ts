@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { type AlertEvent, initTokenizer, type TokenmancerConfig } from '@cte/core';
+import { type AlertEvent, type TokenmancerConfig, initTokenizer } from '@cte/core';
 import { discoverWorkspaces, ensureConfigFile, loadConfig } from '@cte/node-host';
 import * as vscode from 'vscode';
 import { type BridgeOptions, MeterBridge } from './bridge.js';

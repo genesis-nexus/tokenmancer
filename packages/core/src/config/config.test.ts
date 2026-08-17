@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { HIGH_CONTEXT_THRESHOLD, SHORT_PROMPT_CHARS } from '../analytics/aggregate.js';
 import { CREDIT_USD, DEFAULT_MODEL, POOL } from '../pricing/models.js';
 import { mergeConfig, validateConfig } from './merge.js';
 import { DEFAULT_CONFIG } from './schema.js';
@@ -11,11 +10,6 @@ describe('DEFAULT_CONFIG stays pinned to the constants it replaced', () => {
     expect(DEFAULT_CONFIG.pricing.defaultModel).toBe(DEFAULT_MODEL);
     expect(DEFAULT_CONFIG.pricing.poolCredits).toBe(POOL);
     expect(DEFAULT_CONFIG.pricing.creditUsd).toBe(CREDIT_USD);
-  });
-
-  it('mirrors the analytics thresholds', () => {
-    expect(DEFAULT_CONFIG.thresholds.highContextRatio).toBe(HIGH_CONTEXT_THRESHOLD);
-    expect(DEFAULT_CONFIG.thresholds.shortPromptChars).toBe(SHORT_PROMPT_CHARS);
   });
 
   it('ships quiet: only the pool and runaway-loop rules are on', () => {
@@ -106,8 +100,8 @@ describe('validateConfig never throws', () => {
   });
 
   it('enforces numeric bounds', () => {
-    expect(validateConfig({ thresholds: { highContextRatio: 1.5 } }).problems[0]).toMatch(
-      /above the maximum/,
+    expect(validateConfig({ pricing: { poolCredits: -1 } }).problems[0]).toMatch(
+      /below the minimum/,
     );
     expect(validateConfig({ analytics: { timeWindowDays: 0 } }).problems[0]).toMatch(
       /below the minimum/,

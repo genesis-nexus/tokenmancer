@@ -29,10 +29,6 @@ export function stateDir(): string {
   return path.join(tokenmancerHome(), 'state');
 }
 
-export function cacheDir(): string {
-  return path.join(stateDir(), 'cache');
-}
-
 export function ensureDir(dir: string): void {
   fs.mkdirSync(dir, { recursive: true });
 }

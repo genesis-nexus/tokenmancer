@@ -3,7 +3,7 @@
   "displayName": "Tokenmancer",
   "version": "0.1.0",
   "private": true,
-  "description": "See what every AI coding prompt really costs — a live AI-Credit meter, session replay, and a what-if simulator, right inside your editor.",
+  "description": "See what every AI coding prompt really costs \u2014 a live AI-Credit meter, session replay, and a what-if simulator, right inside your editor.",
   "license": "MIT",
   "publisher": "GenesisNexus",
   "repository": {
@@ -65,7 +65,7 @@
       },
       {
         "command": "tokenmancer.pickWorkspace",
-        "title": "Tail a Workspace’s Log…",
+        "title": "Tail a Workspace\u2019s Log\u2026",
         "category": "Tokenmancer"
       },
       {
@@ -75,7 +75,7 @@
       },
       {
         "command": "tokenmancer.setBudget",
-        "title": "Set Monthly Credit Budget…",
+        "title": "Set Monthly Credit Budget\u2026",
         "category": "Tokenmancer"
       }
     ],
@@ -94,7 +94,7 @@
         "tokenmancer.showPrompts": {
           "type": "boolean",
           "default": false,
-          "description": "Show prompt text and tool commands in the meter, session replay, and analytics. Off by default for privacy — token counts, costs and file targets are shown either way."
+          "description": "Show prompt text and tool commands in the meter, session replay, and analytics. Off by default for privacy \u2014 token counts, costs and file targets are shown either way."
         },
         "tokenmancer.budgets.monthlyCredits": {
           "type": ["number", "null"],
@@ -109,7 +109,7 @@
         },
         "tokenmancer.pricing.poolCredits": {
           "type": "number",
-          "default": 5000,
+          "default": 3000,
           "minimum": 1,
           "description": "Credits in your non-rolling monthly seat pool."
         },
@@ -135,23 +135,6 @@
           "minimum": 0,
           "description": "Hard cap on alerts per hour. Anything beyond it is counted, not shown."
         },
-        "tokenmancer.radar.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Warn while an agent loop is still running when it gets unusually expensive."
-        },
-        "tokenmancer.radar.loopCredits": {
-          "type": "number",
-          "default": 5,
-          "minimum": 0,
-          "description": "Credits a single agent loop may spend before Cost Radar speaks up."
-        },
-        "tokenmancer.radar.loopSteps": {
-          "type": "number",
-          "default": 15,
-          "minimum": 0,
-          "description": "Steps a single agent loop may run before Cost Radar speaks up."
-        },
         "tokenmancer.ui.defaultDetail": {
           "type": "string",
           "enum": ["simple", "detailed"],
@@ -176,9 +159,14 @@
     "preact": "^10.25.4"
   },
   "scripts": {
+    "vscode:prepublish": "node build.mjs --production",
     "typecheck": "tsc --noEmit",
     "build": "node build.mjs",
     "build:prod": "node build.mjs --production",
     "package": "node build.mjs --production && vsce package --no-dependencies -o dist/tokenmancer.vsix"
+  },
+  "galleryBanner": {
+    "color": "#0A0D13",
+    "theme": "dark"
   }
 }

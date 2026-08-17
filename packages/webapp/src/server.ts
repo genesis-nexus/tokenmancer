@@ -6,10 +6,10 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   type AlertEvent,
-  initTokenizer,
   type MeterEvent,
   type PartialConfig,
   type TokenmancerConfig,
+  initTokenizer,
   redactEvent,
   validateConfig,
 } from '@cte/core';

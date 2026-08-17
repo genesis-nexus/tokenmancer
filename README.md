@@ -127,7 +127,6 @@ packages/
   extension/   → VS Code extension: host bridge + webviews over postMessage
 proof/         copilot_token_lab.py — the tiktoken golden oracle the pricing tests lock against
 tools/         scaffold-mfe.js — deterministic demo-repo generator (dev fixture)
-legacy/        the original single-file demo kit this was built from (kept for reference)
 ```
 
 **One source of truth for pricing** (previously copied five times and drifting) lives in `core/pricing`, locked by golden tests that reproduce the Python oracle to the cent. The typed `MeterEvent` contract makes the loop-grouping fields *required*, so every producer must route through the single parser funnel.

@@ -36,10 +36,6 @@ export function checkRequiredSettings(): RequiredSettingStatus[] {
   });
 }
 
-export function allRequiredSettingsEnabled(): boolean {
-  return checkRequiredSettings().every((s) => s.enabled);
-}
-
 /** Jump straight to the setting in VS Code's Settings UI, pre-filtered to it. */
 export async function openRequiredSetting(key: string): Promise<void> {
   await vscode.commands.executeCommand('workbench.action.openSettings', `@id:${key}`);

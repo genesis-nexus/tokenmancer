@@ -143,15 +143,3 @@ export const spendRatio = computed(() => {
   if (!s || !s.limit) return null;
   return s.credits / s.limit;
 });
-
-/**
- * Days until the limit is reached at the current burn rate. null when there is
- * no budget, no burn, or the limit is already gone.
- */
-export const daysToLimit = computed(() => {
-  const s = spend.value;
-  if (!s || !s.limit || s.burnRate <= 0) return null;
-  const left = s.limit - s.credits;
-  if (left <= 0) return 0;
-  return left / s.burnRate;
-});

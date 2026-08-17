@@ -47,10 +47,6 @@ export function setSkillMode(mode: SkillMode): void {
   }
 }
 
-export function toggleSkillMode(): void {
-  setSkillMode(skillMode.value === 'novice' ? 'advanced' : 'novice');
-}
-
 /**
  * Apply a producer-supplied default. Deliberately a no-op once the reader has
  * touched the toggle: a workspace setting expresses where to start, not what
@@ -59,9 +55,4 @@ export function toggleSkillMode(): void {
 export function applyConfigDefault(detail: 'simple' | 'detailed' | undefined): void {
   if (!detail || !skillModeIsDefault.value) return;
   skillMode.value = detail === 'detailed' ? 'advanced' : 'novice';
-}
-
-/** Convenience for the many `mode === 'advanced'` reads in render paths. */
-export function isAdvanced(): boolean {
-  return skillMode.value === 'advanced';
 }

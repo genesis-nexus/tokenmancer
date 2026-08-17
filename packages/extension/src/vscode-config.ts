@@ -20,9 +20,6 @@ const KEYS = [
   'alerts.enabled',
   'alerts.cooldownMinutes',
   'alerts.maxPerHour',
-  'radar.enabled',
-  'radar.loopCredits',
-  'radar.loopSteps',
   'ui.defaultDetail',
 ] as const;
 

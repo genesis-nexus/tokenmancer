@@ -4,8 +4,8 @@
 //
 // Reading config files is @cte/node-host's job (config-load.ts). This module is
 // the shared vocabulary both surfaces agree on, and the place where the
-// constants that used to be baked in (POOL, HIGH_CONTEXT_THRESHOLD,
-// SHORT_PROMPT_CHARS, the duplicated RATE_MODEL) become user-settable.
+// constants that used to be baked in (POOL, the duplicated RATE_MODEL) become
+// user-settable.
 
 import type { BudgetRule } from '../budget/types.js';
 
@@ -45,22 +45,6 @@ export interface AlertsConfig {
   channels: AlertChannels;
 }
 
-/** In-loop interrupt thresholds — the Cost Radar (roadmap #6). */
-export interface RadarConfig {
-  enabled: boolean;
-  loopCredits: number;
-  loopSteps: number;
-  toolContextTokens: number;
-  repeatReadCount: number;
-}
-
-export interface ThresholdsConfig {
-  /** Context ratio above which a call counts as "high context". */
-  highContextRatio: number;
-  /** Prompts shorter than this many characters count as terse. */
-  shortPromptChars: number;
-}
-
 export interface UiConfig {
   /**
    * How much detail a surface opens with for someone who has not chosen yet.
@@ -71,8 +55,6 @@ export interface UiConfig {
 
 export interface AnalyticsConfig {
   timeWindowDays: number;
-  /** Incremental per-session metrics cache keyed on (size, mtimeMs). */
-  cacheEnabled: boolean;
 }
 
 export interface TokenmancerConfig {
@@ -81,8 +63,6 @@ export interface TokenmancerConfig {
   privacy: PrivacyConfig;
   budgets: { rules: BudgetRule[] };
   alerts: AlertsConfig;
-  radar: RadarConfig;
-  thresholds: ThresholdsConfig;
   analytics: AnalyticsConfig;
   ui: UiConfig;
 }
@@ -148,21 +128,8 @@ export const DEFAULT_CONFIG: TokenmancerConfig = {
     maxPerHour: 6,
     channels: { banner: true, notification: true, statusBar: true },
   },
-  radar: {
-    enabled: true,
-    loopCredits: 5,
-    loopSteps: 15,
-    toolContextTokens: 5000,
-    repeatReadCount: 3,
-  },
-  thresholds: {
-    // Mirrors HIGH_CONTEXT_THRESHOLD / SHORT_PROMPT_CHARS in ../analytics/aggregate.ts.
-    highContextRatio: 0.8,
-    shortPromptChars: 40,
-  },
   analytics: {
     timeWindowDays: 30,
-    cacheEnabled: true,
   },
   // Simple by default: someone meeting token economics for the first time is
   // the reader this has to win over.
