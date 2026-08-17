@@ -11,8 +11,10 @@ import {
   type InstructionAccumulator,
   isInstructionRecord,
   parseInstructions,
+  repoRootsFromFolders,
 } from './instructions.js';
 import { extractPromptSnippet } from './prompt.js';
+import { parseToolArgs } from './tool-args.js';
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null;
@@ -52,6 +54,13 @@ export interface ProcessOptions {
   defaultModel?: string;
   /** Injected by the Node host to measure instruction files on disk (bytes/tokens). */
   measureInstructions?: (state: InstructionAccumulator) => void;
+  /**
+   * Workspace folders used to make tool targets repo-relative. The Node host
+   * knows these up front; otherwise they are derived from the instruction
+   * folders the log itself reports. A target that matches no root degrades to
+   * its basename, so this only improves precision — it is never required.
+   */
+  repoRoots?: string[];
 }
 
 function registerPromptRecord(rec: Record<string, unknown>, ctx: GroupingContext): string {
@@ -88,10 +97,21 @@ type StepCore = Omit<
   'kind' | 'id' | 'groupId' | 'promptGroupIndex' | 'stepIndex' | 'userPrompt'
 >;
 
+/** Cap on the result payload we measure — the weight only needs to be comparable. */
+const MAX_RESULT_BYTES = 1_000_000;
+
+function resultBytesOf(attrs: Record<string, unknown> | undefined): number {
+  const r = attrs?.result ?? attrs?.output ?? attrs?.content;
+  if (r == null) return 0;
+  const s = typeof r === 'string' ? r : JSON.stringify(r);
+  return Math.min(s?.length ?? 0, MAX_RESULT_BYTES);
+}
+
 function buildStepCore(
   rec: Record<string, unknown>,
   source: EventOrigin,
   defaultModel: string,
+  repoRoots: readonly string[],
 ): StepCore | null {
   const h = harvest(rec, {});
   const hasTokens = h.prompt != null || h.completion != null;
@@ -133,6 +153,10 @@ function buildStepCore(
   const ts = typeof rec.ts === 'number' ? rec.ts : Date.now();
   const roundedAic = Number(aic.toFixed(6));
 
+  // Only tool steps have targets. An LLM step's cost is what a *previous* tool
+  // put in its context, which is the attribution engine's job, not the parser's.
+  const args = isToolStep ? parseToolArgs(attrs?.args, toolName, repoRoots) : null;
+
   return {
     ts,
     source,
@@ -141,6 +165,10 @@ function buildStepCore(
     toolName,
     stepKind,
     isTool: isToolStep,
+    targets: args ? args.targets.map((t) => t.path) : [],
+    toolIntent: args ? args.intent : '',
+    toolQuery: args ? args.query : '',
+    resultBytes: args ? resultBytesOf(attrs) : 0,
     prompt,
     completion,
     cacheRead,
@@ -205,7 +233,15 @@ export function processRecord(
     return;
   }
 
-  const core = buildStepCore(rec, source, opts.defaultModel ?? DEFAULT_MODEL);
+  // Host-supplied roots win; otherwise fall back to whatever the log's own
+  // instruction telemetry has revealed so far.
+  const repoRoots = opts.repoRoots?.length
+    ? opts.repoRoots
+    : ctx.instr
+      ? repoRootsFromFolders(ctx.instr.folders)
+      : [];
+
+  const core = buildStepCore(rec, source, opts.defaultModel ?? DEFAULT_MODEL, repoRoots);
   if (!core) return;
 
   const groupId = linkRecordToPrompt(rec, ctx) || 'ungrouped';

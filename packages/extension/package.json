@@ -22,7 +22,7 @@
   "keywords": ["ai", "tokens", "ai-credits", "cost", "usage", "copilot"],
   "icon": "media/icon.png",
   "main": "./dist/extension.js",
-  "activationEvents": [],
+  "activationEvents": ["onStartupFinished"],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -67,6 +67,16 @@
         "command": "tokenmancer.pickWorkspace",
         "title": "Tail a Workspace’s Log…",
         "category": "Tokenmancer"
+      },
+      {
+        "command": "tokenmancer.showSpend",
+        "title": "Show Month-to-date Spend",
+        "category": "Tokenmancer"
+      },
+      {
+        "command": "tokenmancer.setBudget",
+        "title": "Set Monthly Credit Budget…",
+        "category": "Tokenmancer"
       }
     ],
     "menus": {
@@ -84,7 +94,73 @@
         "tokenmancer.showPrompts": {
           "type": "boolean",
           "default": false,
-          "description": "Show prompt text in the meter, session replay, and analytics. Off by default for privacy — token counts and costs are always shown either way."
+          "description": "Show prompt text and tool commands in the meter, session replay, and analytics. Off by default for privacy — token counts, costs and file targets are shown either way."
+        },
+        "tokenmancer.budgets.monthlyCredits": {
+          "type": ["number", "null"],
+          "default": null,
+          "minimum": 0,
+          "markdownDescription": "Credits you intend to spend per month. Alerts fire at 50%, 80% and 100%. Leave empty for no monthly budget."
+        },
+        "tokenmancer.pricing.defaultModel": {
+          "type": "string",
+          "default": "claude-sonnet-4.6",
+          "description": "Model used to price a call when the debug log does not name one."
+        },
+        "tokenmancer.pricing.poolCredits": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 1,
+          "description": "Credits in your non-rolling monthly seat pool."
+        },
+        "tokenmancer.privacy.showPaths": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Report which repo-relative files the agent read or edited. Contents are never reported, and absolute paths are always withheld."
+        },
+        "tokenmancer.alerts.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Fire budget alerts. Turning this off disables the whole alerting path."
+        },
+        "tokenmancer.alerts.cooldownMinutes": {
+          "type": "number",
+          "default": 15,
+          "minimum": 0,
+          "description": "Minimum gap between alerts for the same budget period. A breach of the limit itself always gets through."
+        },
+        "tokenmancer.alerts.maxPerHour": {
+          "type": "number",
+          "default": 6,
+          "minimum": 0,
+          "description": "Hard cap on alerts per hour. Anything beyond it is counted, not shown."
+        },
+        "tokenmancer.radar.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Warn while an agent loop is still running when it gets unusually expensive."
+        },
+        "tokenmancer.radar.loopCredits": {
+          "type": "number",
+          "default": 5,
+          "minimum": 0,
+          "description": "Credits a single agent loop may spend before Cost Radar speaks up."
+        },
+        "tokenmancer.radar.loopSteps": {
+          "type": "number",
+          "default": 15,
+          "minimum": 0,
+          "description": "Steps a single agent loop may run before Cost Radar speaks up."
+        },
+        "tokenmancer.ui.defaultDetail": {
+          "type": "string",
+          "enum": ["simple", "detailed"],
+          "enumDescriptions": [
+            "Plain-language summary with a Learn card; the step tables and dense metrics are one click away.",
+            "Every step, every metric, the full breakdown."
+          ],
+          "default": "simple",
+          "description": "How much detail the meter and analytics open with. The in-view toggle overrides this and is remembered per machine."
         }
       }
     }

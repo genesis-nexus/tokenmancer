@@ -5,7 +5,9 @@
 import type { JSX } from 'preact';
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import { AnalyticsDashboard } from '../components/Analytics/AnalyticsDashboard.js';
+import { Logo } from '../components/Logo.js';
 import { SettingsBanner } from '../components/SettingsBanner.js';
+import { SettingsButton } from '../components/SettingsPanel.js';
 import { SetupGuide } from '../components/SetupGuide.js';
 import { ThemeToggle } from '../components/ThemeToggle.js';
 import {
@@ -15,6 +17,8 @@ import {
   setAnalyticsError,
   setAnalyticsLoading,
 } from '../state/analytics-store.js';
+import { setConfig } from '../state/budget-store.js';
+import { applyConfigDefault } from '../state/skill-store.js';
 import type { MeterTransport, SettingStatus, WorkspaceSummary } from '../transport.js';
 
 export interface AnalyticsViewProps {
@@ -44,6 +48,24 @@ export function AnalyticsView({ transport, defaultWorkspaceId }: AnalyticsViewPr
       .catch(() => {
         setLoading(false);
       });
+  }, [transport]);
+
+  // Analytics has no live stream, so config is fetched once rather than polled.
+  // It is what the settings dialog and the detail default both read.
+  useEffect(() => {
+    if (!transport.getConfig) return;
+    let alive = true;
+    transport
+      .getConfig()
+      .then((c) => {
+        if (!alive) return;
+        setConfig(c);
+        applyConfigDefault(c.ui?.defaultDetail);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
   }, [transport]);
 
   const [settings, setSettings] = useState<SettingStatus[] | null>(null);
@@ -106,9 +128,12 @@ export function AnalyticsView({ transport, defaultWorkspaceId }: AnalyticsViewPr
     <div class="analytics-view">
       {/* Header Bar */}
       <header class="analytics-view-header">
-        <div class="analytics-view-title">
-          <h1>Workspace Analytics</h1>
-          <span class="analytics-view-subtitle">Understand your Copilot usage patterns</span>
+        <div class="analytics-view-brand">
+          <Logo size={30} />
+          <div class="analytics-view-title">
+            <h1>Workspace Analytics</h1>
+            <span class="analytics-view-subtitle">Understand your Copilot usage patterns</span>
+          </div>
         </div>
         <div class="workspace-selector">
           <label for="ws-select">Workspace:</label>
@@ -130,6 +155,7 @@ export function AnalyticsView({ transport, defaultWorkspaceId }: AnalyticsViewPr
             </select>
           )}
         </div>
+        <SettingsButton transport={transport} />
         <ThemeToggle />
       </header>
 

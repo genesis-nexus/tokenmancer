@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdirSync, rmSync } from 'node:fs';
 import { build } from 'esbuild';
 
 const prod = process.argv.includes('--production');
@@ -41,5 +41,9 @@ await build({
   minify: true,
   logLevel: 'info',
 });
+
+// 3) Static brand assets. Copied rather than bundled: the favicon is fetched by
+//    the browser from a <link>, not imported by any module.
+copyFileSync('../ui/src/brand/favicon.svg', 'dist/public/favicon.svg');
 
 console.log('webapp build complete');

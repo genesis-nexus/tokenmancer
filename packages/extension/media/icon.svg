@@ -1,3 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-  <path d="M3 13h3l2-6 4 12 2-6h4"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="9.8 9.15 44.2 44.2" width="24" height="24">
+  <!--
+    Activity-bar icon. VS Code renders view-container icons as a *mask*, so only
+    the alpha channel survives — colour here would be discarded and any shape
+    left solid would flatten into a blob. Hence a silhouette built from the
+    brand mark's positive space only: the hood as a band with the face knocked
+    out, and the eyes, mouth and dots as separate solids.
+
+    Geometry matches packages/ui/src/components/Logo.tsx; keep the two in step.
+  -->
+  <path
+    d="M32 11.06 L47 23.75 L47.75 50.69 L40.19 46.62 L32 51.44 L23.81 46.62 L16.25 50.69 L17 23.75 Z
+       M32 18.5 L22.25 27.44 L23 43.31 L32 47.38 L41 43.31 L41.75 27.44 Z"
+    fill="#C5C5C5" fill-rule="evenodd"/>
+  <path d="M26 30.94 L31.94 33.5 L29.44 37.56 L24.88 34.62 Z" fill="#C5C5C5"/>
+  <path d="M38 30.94 L39.12 34.62 L34.56 37.56 L32.06 33.5 Z" fill="#C5C5C5"/>
+  <path d="M29.06 41.8 L34.94 41.8 L33.5 44.38 L30.5 44.38 Z" fill="#C5C5C5"/>
+  <circle cx="13.62" cy="18.12" r="1.97" fill="none" stroke="#C5C5C5" stroke-width="1.69"/>
+  <circle cx="46.62" cy="12.88" r="1.12" fill="#C5C5C5"/>
+  <circle cx="51.12" cy="21.5" r="1.88" fill="#C5C5C5"/>
 </svg>

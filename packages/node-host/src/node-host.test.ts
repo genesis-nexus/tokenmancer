@@ -50,6 +50,37 @@ describe('loadLogFile (archive) routes through the funnel', () => {
     expect(s[0]?.sessionId).toBe('sess-x');
     expect(s[0]?.aic).toBeCloseTo(0.45, 6);
   });
+
+  it('makes tool targets repo-relative when the workspace folder is known', () => {
+    const dir = path.join(tmp, 'roots', 'GitHub.copilot-chat', 'debug-logs');
+    fs.mkdirSync(dir, { recursive: true });
+    const repo = '/Users/dev/myproj';
+    fs.writeFileSync(
+      path.join(dir, 'main.jsonl'),
+      `${[
+        '{"type":"user_message","sid":"s1","spanId":"p1","ts":1000,"attrs":{"userRequest":"go"}}',
+        JSON.stringify({
+          type: 'tool_call',
+          sid: 's1',
+          spanId: 't1',
+          parentSpanId: 'p1',
+          ts: 1001,
+          name: 'read_file',
+          attrs: { args: JSON.stringify({ filePath: `${repo}/src/server.ts` }) },
+        }),
+      ].join('\n')}\n`,
+    );
+
+    // Without a root, the path degrades to a basename so nothing absolute leaks.
+    const bare = steps(loadLogFile(path.join(dir, 'main.jsonl'), {}));
+    expect(bare[0]?.targets).toEqual(['server.ts']);
+
+    // With the workspace folder, it becomes the repo-relative path the
+    // file-cost report needs to tell two server.ts files apart.
+    const rooted = steps(loadLogFile(path.join(dir, 'main.jsonl'), { repoRoots: [repo] }));
+    expect(rooted[0]?.targets).toEqual(['src/server.ts']);
+    expect(rooted[0]?.toolIntent).toBe('read');
+  });
 });
 
 describe('startLiveTail preload', () => {

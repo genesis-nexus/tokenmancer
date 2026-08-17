@@ -72,6 +72,6 @@ describe('rateFor fuzzy matching + table invariants', () => {
       const expected = id === 'claude-sonnet-4.6' ? 375 : Math.round(m.in * 1.25);
       expect(m.cw).toBe(expected);
     }
-    expect(POOL).toBe(5000);
+    expect(POOL).toBe(3000);
   });
 });

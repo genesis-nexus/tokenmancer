@@ -32,6 +32,33 @@ export const SEG_COLOR: Record<keyof CostParts, string> = {
   out: '#c98500',
 };
 
+/** The same four segments, said the way you would say them out loud. */
+export const SEG_PLAIN: Record<keyof CostParts, string> = {
+  read: 're-reading the conversation so far',
+  write: 'saving the conversation for reuse',
+  fresh: 'new material sent to the model',
+  out: "the model's own reply",
+};
+
+/**
+ * The single sentence a beginner needs about one loop: which of the four
+ * segments dominated, and what that means. Anything below a third is not
+ * really a story, so those get the neutral phrasing.
+ */
+export function dominantCostPhrase(parts: CostParts): string {
+  const total = parts.read + parts.write + parts.fresh + parts.out;
+  if (total <= 0) return 'This one was free — no billed model calls.';
+
+  const entries = (Object.keys(parts) as Array<keyof CostParts>).map((k) => [k, parts[k]] as const);
+  entries.sort((a, b) => b[1] - a[1]);
+  const top = entries[0];
+  if (!top) return '';
+
+  const share = Math.round((top[1] / total) * 100);
+  if (share < 34) return 'The cost was spread fairly evenly across reading, sending and replying.';
+  return `Most of this — about ${share}% — went on ${SEG_PLAIN[top[0]]}.`;
+}
+
 export const STEP_META: Record<StepKind, { label: string; icon: string }> = {
   plan: { label: 'Plan / Reason', icon: '◆' },
   read: { label: 'Read file', icon: '▤' },

@@ -1,4 +1,12 @@
-import type { AnalyticsInsight, MeterEvent, WorkspaceAnalytics } from '@cte/core';
+import type {
+  AnalyticsInsight,
+  BudgetRule,
+  MeterEvent,
+  PartialConfig,
+  SpendSnapshot,
+  TokenmancerConfig,
+  WorkspaceAnalytics,
+} from '@cte/core';
 import type { ConnState } from './state/store.js';
 
 export interface WorkspaceSummary {
@@ -49,7 +57,26 @@ export interface MeterTransport {
   checkSettings?(): Promise<SettingStatus[]>;
   /** VS Code only: jump straight to the named setting in the Settings UI. */
   openSetting?(key: string): Promise<void>;
+  /** Live producers only. Absent on ReplayTransport, which has no budget state. */
+  getConfig?(): Promise<TokenmancerConfig>;
+  getSpend?(period?: string): Promise<SpendResult>;
+  setBudget?(rules: BudgetRule[]): Promise<{ ok: boolean; rules?: BudgetRule[] }>;
+  /** Persist any settings patch. Absent where there is nowhere to persist to. */
+  updateSettings?(patch: PartialConfig): Promise<SettingsResult>;
   dispose(): void;
+}
+
+export interface SpendResult {
+  snapshot: SpendSnapshot;
+  rules: BudgetRule[];
+}
+
+export interface SettingsResult {
+  ok: boolean;
+  /** The config as it now governs — not the patch, which a higher layer may outrank. */
+  config?: TokenmancerConfig;
+  savedTo?: string;
+  problems?: string[];
 }
 
 export interface SseOptions {
@@ -109,8 +136,11 @@ export class SseTransport implements MeterTransport {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return (await r.json()) as T;
   }
-  private async post<T>(path: string): Promise<T> {
-    const r = await fetch(withToken(`${this.base}${path}`, this.token), { method: 'POST' });
+  private async post<T>(path: string, body?: unknown): Promise<T> {
+    const r = await fetch(withToken(`${this.base}${path}`, this.token), {
+      method: 'POST',
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return (await r.json()) as T;
   }
@@ -134,6 +164,19 @@ export class SseTransport implements MeterTransport {
   getWorkspaceAnalytics(wsId: string, timeWindowDays = 30): Promise<AnalyticsResult> {
     const q = new URLSearchParams({ ws: wsId, days: String(timeWindowDays) });
     return this.get<AnalyticsResult>(`/api/analytics?${q.toString()}`);
+  }
+  getConfig(): Promise<TokenmancerConfig> {
+    return this.get<TokenmancerConfig>('/api/config');
+  }
+  getSpend(period?: string): Promise<SpendResult> {
+    const q = period ? `?period=${encodeURIComponent(period)}` : '';
+    return this.get<SpendResult>(`/api/spend${q}`);
+  }
+  setBudget(rules: BudgetRule[]): Promise<{ ok: boolean; rules?: BudgetRule[] }> {
+    return this.post('/api/budget', { rules });
+  }
+  updateSettings(patch: PartialConfig): Promise<SettingsResult> {
+    return this.post('/api/settings', patch);
   }
   dispose(): void {
     this.es?.close();
@@ -274,6 +317,18 @@ export class PostMessageTransport implements MeterTransport {
   }
   openSetting(key: string): Promise<void> {
     return this.rpc('openSetting', { key });
+  }
+  getConfig(): Promise<TokenmancerConfig> {
+    return this.rpc('getConfig');
+  }
+  getSpend(period?: string): Promise<SpendResult> {
+    return this.rpc('getSpend', { period });
+  }
+  setBudget(rules: BudgetRule[]): Promise<{ ok: boolean; rules?: BudgetRule[] }> {
+    return this.rpc('setBudget', { rules });
+  }
+  updateSettings(patch: PartialConfig): Promise<SettingsResult> {
+    return this.rpc('updateSettings', { patch });
   }
   dispose(): void {
     window.removeEventListener('message', this.onMessage);

@@ -1,6 +1,7 @@
 import type { InstructionsEvent, MeterEvent, StepEvent } from '@cte/core';
 import { computed, signal } from '@preact/signals';
 import { type CostParts, costParts } from '../pricing-ui.js';
+import { pushAlert, resetAlerts } from './budget-store.js';
 
 export interface LoopGroup {
   groupId: string;
@@ -99,11 +100,18 @@ export function resetSession(): void {
 /** Dispatch any event from a transport into the store. */
 export function dispatch(ev: MeterEvent): void {
   if (ev.kind === 'control') {
-    if (ev.control === 'session') resetSession();
+    if (ev.control === 'session') {
+      resetSession();
+      resetAlerts();
+    }
     return;
   }
   if (ev.kind === 'instructions') {
     setInstructions(ev);
+    return;
+  }
+  if (ev.kind === 'alert') {
+    pushAlert(ev);
     return;
   }
   addStep(ev);

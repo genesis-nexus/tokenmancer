@@ -12,6 +12,8 @@ export interface TailOptions {
   /** watchFile poll interval in ms (default 400). */
   pollInterval?: number;
   defaultModel?: string;
+  /** Workspace folders, so tool targets come out repo-relative. */
+  repoRoots?: string[];
   measureInstructions?: (s: Parameters<typeof measureInstructionFiles>[0]) => void;
   onError?: (e: unknown) => void;
 }
@@ -35,6 +37,7 @@ export function startLiveTail(file: string, opts: TailOptions): TailController {
   const feed = (obj: unknown) =>
     processRecord(obj, 'tail', ctx, opts.emit, {
       defaultModel: opts.defaultModel,
+      repoRoots: opts.repoRoots,
       measureInstructions: measure,
     });
 

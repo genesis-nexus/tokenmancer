@@ -8,6 +8,10 @@ import type { ServerOptions } from './security.js';
 import { type RunningServer, startServer } from './server.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cte-web-'));
+// The server now writes a spend ledger and alert state; keep both off the
+// developer's real ~/.tokenmancer.
+process.env.TOKENMANCER_HOME = path.join(tmp, 'home');
+
 const running: RunningServer[] = [];
 afterAll(async () => {
   await Promise.all(running.map((s) => s.close()));
@@ -37,9 +41,10 @@ async function start(over: Partial<ServerOptions>): Promise<RunningServer> {
     fromStart: false,
     rateModel: 'claude-sonnet-4.6',
     open: false,
+    configFile: null,
     ...over,
   };
-  const s = await startServer(opts);
+  const s = await startServer({ ...opts, cwd: tmp });
   running.push(s);
   return s;
 }
@@ -165,5 +170,223 @@ describe('hardened local-first server', () => {
     const s = await start({ showPrompts: true });
     const evs = await readSse(s.url, s.token);
     expect(JSON.stringify(evs)).toContain('SECRET');
+  });
+});
+
+describe('config and budget routes', () => {
+  it('serves the composed config behind the token', async () => {
+    const s = await start({});
+    expect((await fetch(`${s.url}api/config`)).status).toBe(401);
+    const r = await fetch(`${s.url}api/config?token=${s.token}`);
+    expect(r.status).toBe(200);
+    const cfg = (await r.json()) as Record<string, Record<string, unknown>>;
+    expect(cfg.pricing?.poolCredits).toBe(3000);
+  });
+
+  it('reports spend for every period', async () => {
+    const s = await start({});
+    expect((await fetch(`${s.url}api/spend`)).status).toBe(401);
+    const r = await fetch(`${s.url}api/spend?token=${s.token}&period=month`);
+    const body = (await r.json()) as {
+      snapshot: { byPeriod: Record<string, { credits: number }> };
+      period?: { credits: number };
+      rules: unknown[];
+    };
+    expect(Object.keys(body.snapshot.byPeriod).sort()).toEqual([
+      'day',
+      'loop',
+      'month',
+      'pool',
+      'session',
+      'week',
+    ]);
+    expect(body.period).toBeDefined();
+    expect(Array.isArray(body.rules)).toBe(true);
+  });
+
+  it('persists a posted budget rule and reflects it in /api/spend', async () => {
+    const s = await start({});
+    const post = await fetch(`${s.url}api/budget?token=${s.token}`, {
+      method: 'POST',
+      body: JSON.stringify({
+        rules: [{ id: 'test-day', period: 'day', metric: 'credits', limit: 42, thresholds: [1] }],
+      }),
+    });
+    expect(post.status).toBe(200);
+
+    const after = (await (await fetch(`${s.url}api/spend?token=${s.token}`)).json()) as {
+      rules: Array<{ id: string; limit: number }>;
+    };
+    expect(after.rules).toHaveLength(1);
+    expect(after.rules[0]).toMatchObject({ id: 'test-day', limit: 42 });
+  });
+
+  it('rejects a malformed budget payload without changing the rules', async () => {
+    const s = await start({});
+    const bad = await fetch(`${s.url}api/budget?token=${s.token}`, {
+      method: 'POST',
+      body: '{ not json',
+    });
+    expect(bad.status).toBe(400);
+
+    const wrongShape = await fetch(`${s.url}api/budget?token=${s.token}`, {
+      method: 'POST',
+      body: JSON.stringify({ rules: 'nope' }),
+    });
+    expect(wrongShape.status).toBe(400);
+  });
+
+  /**
+   * The alertRing regression: the step ring holds 200 frames and is emptied on
+   * every new session, so an alert kept only there would vanish before anyone
+   * saw it. This asserts it survives to a client that connects afterwards.
+   */
+  it('replays an alert fired before the client connected', async () => {
+    const s = await start({});
+    await fetch(`${s.url}api/budget?token=${s.token}`, {
+      method: 'POST',
+      body: JSON.stringify({
+        rules: [{ id: 'tiny', period: 'month', metric: 'credits', limit: 0.001, thresholds: [1] }],
+      }),
+    });
+
+    // Current timestamps: a `month` budget only counts steps that happened in
+    // the month it is tracking, so the shared fixture's 2023 dates would not
+    // move the needle.
+    const now = Date.now();
+    const inbox = path.join(tmp, `${Math.random().toString(36).slice(2)}.jsonl`);
+    const live = INBOX_LINES.map((l) => l.replace(/"ts":\d+/, `"ts":${now}`));
+    fs.writeFileSync(inbox, `${live.join('\n')}\n`);
+    const s2 = await start({ inbox, showPrompts: false });
+    await fetch(`${s2.url}api/budget?token=${s2.token}`, {
+      method: 'POST',
+      body: JSON.stringify({
+        rules: [{ id: 'tiny', period: 'month', metric: 'credits', limit: 0.001, thresholds: [1] }],
+      }),
+    });
+    fs.appendFileSync(inbox, `${live[1]?.replace('"r1"', '"r2"')}\n`);
+
+    // Connect only after the spend has already happened.
+    await new Promise((r) => setTimeout(r, 900));
+    const evs = await readSse(s2.url, s2.token, 700);
+    const alert = evs.find((e) => e.kind === 'alert');
+    expect(alert).toBeDefined();
+  });
+});
+
+describe('settings route', () => {
+  /**
+   * These writes land in the shared config file, so each one gets its own home.
+   * Without the isolation a settings test would silently reorder the assertions
+   * in every other block that reads a default.
+   */
+  async function withOwnHome<T>(
+    fn: (start: () => Promise<RunningServer>) => Promise<T>,
+  ): Promise<T> {
+    const prev = process.env.TOKENMANCER_HOME;
+    process.env.TOKENMANCER_HOME = fs.mkdtempSync(path.join(tmp, 'home-'));
+    try {
+      return await fn(() => start({}));
+    } finally {
+      process.env.TOKENMANCER_HOME = prev;
+    }
+  }
+
+  it('requires the token like every other /api route', async () => {
+    await withOwnHome(async (boot) => {
+      const s = await boot();
+      const r = await fetch(`${s.url}api/settings`, { method: 'POST', body: '{}' });
+      expect(r.status).toBe(401);
+    });
+  });
+
+  it('saves a setting and reports the config that now governs', async () => {
+    await withOwnHome(async (boot) => {
+      const s = await boot();
+      const r = await fetch(`${s.url}api/settings?token=${s.token}`, {
+        method: 'POST',
+        body: JSON.stringify({ pricing: { poolCredits: 3000 }, alerts: { enabled: false } }),
+      });
+      expect(r.status).toBe(200);
+      const body = (await r.json()) as {
+        ok: boolean;
+        savedTo: string;
+        config: { pricing: { poolCredits: number }; alerts: { enabled: boolean } };
+      };
+      expect(body.ok).toBe(true);
+      expect(body.savedTo).toContain('config.json');
+      expect(body.config.pricing.poolCredits).toBe(3000);
+      expect(body.config.alerts.enabled).toBe(false);
+
+      // ...and the live server is using it, not just echoing it back.
+      const cfg = (await (await fetch(`${s.url}api/config?token=${s.token}`)).json()) as {
+        pricing: { poolCredits: number };
+      };
+      expect(cfg.pricing.poolCredits).toBe(3000);
+    });
+  });
+
+  /** The assertion the whole feature rests on: a limit must outlive the process. */
+  it('a saved budget survives a server restart', async () => {
+    await withOwnHome(async (boot) => {
+      const first = await boot();
+      await fetch(`${first.url}api/settings?token=${first.token}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          budgets: {
+            rules: [
+              {
+                id: 'month-limit',
+                enabled: true,
+                period: 'month',
+                metric: 'credits',
+                limit: 2000,
+                thresholds: [0.5, 0.8, 1],
+                severity: 'warn',
+                scope: 'global',
+              },
+            ],
+          },
+        }),
+      });
+      await first.close();
+
+      const second = await boot();
+      const after = (await (
+        await fetch(`${second.url}api/spend?token=${second.token}`)
+      ).json()) as {
+        rules: Array<{ id: string; limit: number }>;
+      };
+      expect(after.rules).toEqual([expect.objectContaining({ id: 'month-limit', limit: 2000 })]);
+    });
+  });
+
+  it('rejects a patch with nothing valid in it, leaving the config alone', async () => {
+    await withOwnHome(async (boot) => {
+      const s = await boot();
+      const before = (await (await fetch(`${s.url}api/config?token=${s.token}`)).json()) as {
+        pricing: { poolCredits: number };
+      };
+
+      expect(
+        (
+          await fetch(`${s.url}api/settings?token=${s.token}`, {
+            method: 'POST',
+            body: '{ not json',
+          })
+        ).status,
+      ).toBe(400);
+
+      const junk = await fetch(`${s.url}api/settings?token=${s.token}`, {
+        method: 'POST',
+        body: JSON.stringify({ nonsense: true, pricing: { poolCredits: 'lots' } }),
+      });
+      expect(junk.status).toBe(400);
+
+      const after = (await (await fetch(`${s.url}api/config?token=${s.token}`)).json()) as {
+        pricing: { poolCredits: number };
+      };
+      expect(after.pricing.poolCredits).toBe(before.pricing.poolCredits);
+    });
   });
 });

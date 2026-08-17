@@ -6,6 +6,8 @@ export interface LoadOptions {
   /** Stamp step events with this session id (for archive replay). */
   sessionId?: string;
   defaultModel?: string;
+  /** Workspace folders, so tool targets come out repo-relative. */
+  repoRoots?: string[];
   /** Measure instruction files on disk. Defaults to the real fs measurer. */
   measureInstructions?: (s: Parameters<typeof measureInstructionFiles>[0]) => void;
   onError?: (e: unknown) => void;
@@ -29,7 +31,11 @@ export function loadLogFile(absFile: string, opts: LoadOptions = {}): MeterEvent
             if (ev.kind === 'step' && opts.sessionId) ev.sessionId = opts.sessionId;
             events.push(ev);
           },
-          { defaultModel: opts.defaultModel, measureInstructions: measure },
+          {
+            defaultModel: opts.defaultModel,
+            repoRoots: opts.repoRoots,
+            measureInstructions: measure,
+          },
         );
       }
     }

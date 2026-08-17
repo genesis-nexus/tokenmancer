@@ -1,9 +1,16 @@
 /**
- * TrendChart - Tabbed area chart for the daily trend series.
+ * TrendChart - Tabbed daily trend series.
  *
  * One measure at a time on a single zero-based axis. The dashed companion line is
  * a 7-day moving average of the *same* measure, so it shares the axis by
  * construction — never a second scale.
+ *
+ * The mark type is chosen per measure rather than shared, because the wrong one
+ * asserts something untrue about the data. A smoothed area between Monday's 4
+ * sessions and Tuesday's 6 draws 5.1 sessions at midnight and reads the space
+ * beneath as an accumulated total; neither exists. So: counted events get bars,
+ * a bounded rate gets a bare line (the area under a percentage means nothing),
+ * and only spend — which genuinely accumulates — keeps the filled area.
  */
 
 import type { TrendDataPoint } from '@cte/core';
@@ -11,7 +18,7 @@ import type { JSX } from 'preact';
 import { useMemo, useState } from 'preact/hooks';
 import { fmtCr } from '../../format.js';
 
-type MetricKey =
+export type MetricKey =
   | 'sessionCount'
   | 'totalAic'
   | 'totalLoops'
@@ -19,12 +26,27 @@ type MetricKey =
   | 'modelSwitches'
   | 'highContextCalls';
 
+/**
+ * `area` — a quantity that accumulates, where the filled region is itself a
+ *   meaningful total.
+ * `bar` — countable events on a discrete day. Bars leave the gaps between days
+ *   visible, which is the honest picture for a series that is often zero.
+ * `line` — a bounded rate. No fill: nothing accumulates under a percentage.
+ */
+type ChartKind = 'area' | 'bar' | 'line';
+
 interface TabDef {
   key: MetricKey;
   label: string;
   title: string;
   subtitle: string;
   unit: string;
+  chart: ChartKind;
+  /**
+   * The measure counts whole things, so the axis may not offer a fractional
+   * tick. "0.3 sessions" is the same untruth as a smoothed line between them.
+   */
+  integral?: boolean;
   /** Scales the raw value into what the axis shows (e.g. ratio → percent). */
   scale?: (v: number) => number;
   format: (v: number) => string;
@@ -37,6 +59,8 @@ const TABS: TabDef[] = [
     title: 'Sessions started',
     subtitle: 'New chat sessions per day',
     unit: '',
+    chart: 'bar',
+    integral: true,
     format: (v) => v.toFixed(v % 1 === 0 ? 0 : 1),
   },
   {
@@ -45,6 +69,7 @@ const TABS: TabDef[] = [
     title: 'Credits spent',
     subtitle: 'AI-Credits burned per day',
     unit: 'cr',
+    chart: 'area',
     format: (v) => fmtCr(v),
   },
   {
@@ -53,6 +78,8 @@ const TABS: TabDef[] = [
     title: 'Prompt loops',
     subtitle: 'Agent loops run per day',
     unit: '',
+    chart: 'bar',
+    integral: true,
     format: (v) => v.toFixed(v % 1 === 0 ? 0 : 1),
   },
   {
@@ -61,6 +88,7 @@ const TABS: TabDef[] = [
     title: 'Cache reuse rate',
     subtitle: 'Share of input served from cache',
     unit: '%',
+    chart: 'line',
     scale: (v) => v * 100,
     format: (v) => v.toFixed(0),
   },
@@ -70,6 +98,8 @@ const TABS: TabDef[] = [
     title: 'Mid-session model switches',
     subtitle: 'Times the model changed inside a session',
     unit: '',
+    chart: 'bar',
+    integral: true,
     format: (v) => v.toFixed(v % 1 === 0 ? 0 : 1),
   },
   {
@@ -78,6 +108,8 @@ const TABS: TabDef[] = [
     title: 'Calls over 80% context',
     subtitle: 'Calls that ran near the window limit',
     unit: '',
+    chart: 'bar',
+    integral: true,
     format: (v) => v.toFixed(v % 1 === 0 ? 0 : 1),
   },
 ];
@@ -93,16 +125,22 @@ const MA_WINDOW = 7;
 
 export interface TrendChartProps {
   data: TrendDataPoint[];
+  /** Restrict the tab strip. The simple view keeps only the self-explanatory ones. */
+  only?: MetricKey[];
+  /** Which series to open on. */
+  initial?: MetricKey;
 }
 
-export function TrendChart({ data }: TrendChartProps): JSX.Element {
-  const [activeTab, setActiveTab] = useState<MetricKey>('sessionCount');
+export function TrendChart({ data, only, initial }: TrendChartProps): JSX.Element {
+  const shown = only?.length ? TABS.filter((t) => only.includes(t.key)) : TABS;
+  const first = shown[0] ?? TABS[0]!;
+  const [activeTab, setActiveTab] = useState<MetricKey>(initial ?? first.key);
   const [hover, setHover] = useState<number | null>(null);
-  const tab = TABS.find((t) => t.key === activeTab) ?? TABS[0]!;
+  const tab = shown.find((t) => t.key === activeTab) ?? first;
 
   const tabs = (
     <div class="trend-tabs" role="tablist">
-      {TABS.map((t) => (
+      {shown.map((t) => (
         <button
           key={t.key}
           type="button"
@@ -131,9 +169,11 @@ export function TrendChart({ data }: TrendChartProps): JSX.Element {
     );
   }
 
-  const { values, avgSeries, points, avgPoints, ticks, yMax, avg, latest } = model;
+  const { values, avgSeries, points, avgPoints, barW, ticks, yMax, avg, latest } = model;
   const single = points.length === 1;
   const active = hover !== null ? hover : null;
+  const isBar = tab.chart === 'bar';
+  const baseY = M.top + PLOT_H;
 
   return (
     <div class="trend-panel">
@@ -161,7 +201,7 @@ export function TrendChart({ data }: TrendChartProps): JSX.Element {
           role="img"
           aria-label={`${tab.title} over ${data.length} days`}
           onMouseLeave={() => setHover(null)}
-          onMouseMove={(e) => setHover(nearestIndex(e, points.length))}
+          onMouseMove={(e) => setHover(nearestIndex(e, points.length, isBar))}
         >
           <defs>
             <linearGradient id={`trendFill-${activeTab}`} x1="0" y1="0" x2="0" y2="1">
@@ -193,28 +233,53 @@ export function TrendChart({ data }: TrendChartProps): JSX.Element {
             />
           )}
 
-          {!single && (
+          {isBar ? (
+            /* A zero day draws no bar. That gap is information — it says the
+               agent did not run — so it is left empty rather than floored to a
+               visible sliver that would read as a small nonzero value. */
+            points.map((p, i) => (
+              <rect
+                key={p.x}
+                class={`trend-bar ${i === active ? 'is-active' : ''}`}
+                x={p.x - barW / 2}
+                y={p.y}
+                width={barW}
+                height={Math.max(0, baseY - p.y)}
+                rx={Math.min(2, barW / 3)}
+              />
+            ))
+          ) : (
             <>
-              <path d={areaPath(points)} fill={`url(#trendFill-${activeTab})`} />
-              <path class="trend-line" d={linePath(points)} />
-              {avgPoints.length > 1 && <path class="trend-ma-line" d={linePath(avgPoints)} />}
+              {!single && (
+                <>
+                  {tab.chart === 'area' && (
+                    <path d={areaPath(points)} fill={`url(#trendFill-${activeTab})`} />
+                  )}
+                  <path class="trend-line" d={linePath(points)} />
+                </>
+              )}
+              {/* Endpoint marker always visible; the rest appear on hover. */}
+              {points.map((p, i) => (
+                <circle
+                  key={p.x}
+                  class={`trend-dot ${i === points.length - 1 ? 'is-end' : ''} ${
+                    i === active ? 'is-active' : ''
+                  }`}
+                  cx={p.x}
+                  cy={p.y}
+                  r="4.5"
+                />
+              ))}
             </>
           )}
 
-          {/* Endpoint marker always visible; the rest appear on hover. */}
-          {points.map((p, i) => (
-            <circle
-              key={p.x}
-              class={`trend-dot ${i === points.length - 1 ? 'is-end' : ''} ${
-                i === active ? 'is-active' : ''
-              }`}
-              cx={p.x}
-              cy={p.y}
-              r="4.5"
-            />
-          ))}
+          {/* The moving average rides over either mark type — it is the trend
+              read, and on a sparse bar series it is the only one there is. */}
+          {!single && avgPoints.length > 1 && (
+            <path class="trend-ma-line" d={linePath(avgPoints)} />
+          )}
 
-          {active !== null && points[active] && (
+          {active !== null && points[active] && !isBar && (
             <line
               class="trend-crosshair"
               x1={points[active]!.x}
@@ -299,6 +364,8 @@ interface ChartModel {
   avgSeries: number[];
   points: Pt[];
   avgPoints: Pt[];
+  /** Bar width in viewBox units; only meaningful for the `bar` layout. */
+  barW: number;
   ticks: Array<{ value: number; y: number; label: string }>;
   yMax: number;
   avg: number;
@@ -313,12 +380,18 @@ function buildModel(data: TrendDataPoint[], tab: TabDef): ChartModel | null {
   const avgSeries = movingAverage(values, MA_WINDOW);
 
   const dataMax = Math.max(...values, ...avgSeries);
-  const { yMax, ticks } = axisScale(dataMax);
+  const { yMax, ticks } = axisScale(dataMax, tab.integral);
+
+  // Bars occupy a band, so they sit at band centres and the series stops short
+  // of both edges. Lines and areas span edge to edge, where the first and last
+  // points are the axis bounds rather than samples within them.
+  const band = PLOT_W / data.length;
   const step = data.length > 1 ? PLOT_W / (data.length - 1) : 0;
-  const toPoint = (v: number, i: number): Pt => ({
-    x: data.length > 1 ? M.left + i * step : M.left + PLOT_W / 2,
-    y: yOf(v, yMax),
-  });
+  const xOf = (i: number): number => {
+    if (tab.chart === 'bar') return M.left + band * (i + 0.5);
+    return data.length > 1 ? M.left + i * step : M.left + PLOT_W / 2;
+  };
+  const toPoint = (v: number, i: number): Pt => ({ x: xOf(i), y: yOf(v, yMax) });
 
   const sum = values.reduce((a, b) => a + b, 0);
 
@@ -327,6 +400,7 @@ function buildModel(data: TrendDataPoint[], tab: TabDef): ChartModel | null {
     avgSeries,
     points: values.map(toPoint),
     avgPoints: avgSeries.map(toPoint),
+    barW: Math.max(1.5, Math.min(30, band * 0.62)),
     ticks: ticks.map((value) => ({
       value,
       y: yOf(value, yMax),
@@ -355,10 +429,10 @@ function movingAverage(values: number[], window: number): number[] {
  * rather than the top is what keeps a max of 5 on 0/2/4/6 instead of the
  * unreadable 0/1.3/2.5/3.8/5 that dividing the top into four gives.
  */
-function axisScale(max: number): { yMax: number; ticks: number[] } {
+function axisScale(max: number, integral = false): { yMax: number; ticks: number[] } {
   if (!Number.isFinite(max) || max <= 0) return { yMax: 1, ticks: [0, 1] };
 
-  const step = niceStep(max / 4);
+  const step = niceStep(max / 4, integral);
   const count = Math.max(1, Math.ceil(max / step - 1e-9));
   // Multiply rather than accumulate, so the ticks stay exact.
   return {
@@ -367,11 +441,37 @@ function axisScale(max: number): { yMax: number; ticks: number[] } {
   };
 }
 
-function niceStep(raw: number): number {
+/**
+ * A tick step on the 1/2/2.5/5 × 10^n ladder. Counted measures drop the 2.5
+ * rung and floor at 1, because a gridline at "0.3 sessions" labels a quantity
+ * that cannot occur — the axis would be inventing resolution the data has not
+ * got. The 3 rung replaces 2.5 there so a max of 9 still lands on 0/3/6/9
+ * rather than collapsing to 0/5/10.
+ */
+function niceStep(raw: number, integral = false): number {
   const magnitude = 10 ** Math.floor(Math.log10(raw));
   const n = raw / magnitude;
-  const snapped = n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10;
-  return snapped * magnitude;
+  const snapped = integral
+    ? n <= 1
+      ? 1
+      : n <= 2
+        ? 2
+        : n <= 3
+          ? 3
+          : n <= 5
+            ? 5
+            : 10
+    : n <= 1
+      ? 1
+      : n <= 2
+        ? 2
+        : n <= 2.5
+          ? 2.5
+          : n <= 5
+            ? 5
+            : 10;
+  const step = snapped * magnitude;
+  return integral ? Math.max(1, Math.round(step)) : step;
 }
 
 function tickLabel(v: number): string {
@@ -440,8 +540,16 @@ function areaPath(points: Pt[]): string {
   return `${linePath(points)} L ${points[points.length - 1]!.x} ${base} L ${points[0]!.x} ${base} Z`;
 }
 
-/** Map a pointer position onto the nearest data index. */
-function nearestIndex(e: JSX.TargetedMouseEvent<SVGSVGElement>, count: number): number | null {
+/**
+ * Map a pointer position onto the nearest data index. Bars own a band, so the
+ * hit test floors into it; points sit on gridline positions, so it rounds to
+ * the closest. Getting this wrong offsets every bar's tooltip by half a day.
+ */
+function nearestIndex(
+  e: JSX.TargetedMouseEvent<SVGSVGElement>,
+  count: number,
+  band = false,
+): number | null {
   if (count === 0) return null;
   const rect = e.currentTarget.getBoundingClientRect();
   if (rect.width === 0) return null;
@@ -449,7 +557,7 @@ function nearestIndex(e: JSX.TargetedMouseEvent<SVGSVGElement>, count: number): 
   const vbX = ((e.clientX - rect.left) / rect.width) * VB_W;
   const frac = (vbX - M.left) / PLOT_W;
   if (frac < -0.05 || frac > 1.05) return null;
-  const i = Math.round(frac * (count - 1));
+  const i = band ? Math.floor(frac * count) : Math.round(frac * (count - 1));
   return Math.min(count - 1, Math.max(0, i));
 }
 
