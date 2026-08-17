@@ -19,7 +19,7 @@
     "vscode": "^1.90.0"
   },
   "categories": ["Visualization", "Other"],
-  "keywords": ["ai", "tokens", "ai-credits", "cost", "usage", "copilot"],
+  "keywords": ["ai", "tokens", "ai-credits", "cost", "usage"],
   "icon": "media/icon.png",
   "main": "./dist/extension.js",
   "activationEvents": ["onStartupFinished"],
@@ -29,7 +29,7 @@
         {
           "id": "tokenmancer",
           "title": "Tokenmancer",
-          "icon": "media/icon.svg"
+          "icon": "media/icon-activity.png"
         }
       ]
     },

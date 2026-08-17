@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, rmSync } from 'node:fs';
 import { build } from 'esbuild';
 
@@ -5,6 +6,12 @@ const prod = process.argv.includes('--production');
 
 rmSync('dist', { recursive: true, force: true });
 mkdirSync('dist/public', { recursive: true });
+
+// o200k ranks as a served asset instead of a ~2.3 MB blob inlined into the
+// browser bundles — see core/tokenizer. Fetched by the surfaces at runtime.
+execFileSync('node', ['../../tools/emit-ranks.mjs', 'dist/public/o200k_base.json'], {
+  stdio: 'inherit',
+});
 
 // 1) Node server — single self-contained ESM file.
 await build({

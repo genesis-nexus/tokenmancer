@@ -1,8 +1,14 @@
-import { describe, expect, it } from 'vitest';
-import { countTokens, estimateTokens, o200k } from './index.js';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { countTokens, estimateTokens, initTokenizer, isTokenizerReady, o200k } from './index.js';
 
 // Parity goldens: o200k_base is a fixed BPE, so these counts equal Python's
-// tiktoken o200k_base exactly. The ranks are bundled, so this needs no network.
+// tiktoken o200k_base exactly. The ranks are a runtime asset now, so load them
+// straight from the package here — still no network.
+beforeAll(async () => {
+  await initTokenizer(async () => (await import('js-tiktoken/ranks/o200k_base')).default);
+  expect(isTokenizerReady()).toBe(true);
+});
+
 describe('o200k tokenizer parity', () => {
   const cases: Array<[string, number]> = [
     ['hello world', 2],

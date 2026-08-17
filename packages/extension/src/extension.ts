@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { AlertEvent, TokenmancerConfig } from '@cte/core';
+import { type AlertEvent, initTokenizer, type TokenmancerConfig } from '@cte/core';
 import { discoverWorkspaces, ensureConfigFile, loadConfig } from '@cte/node-host';
 import * as vscode from 'vscode';
 import { type BridgeOptions, MeterBridge } from './bridge.js';
@@ -54,6 +54,11 @@ function webviewHtml(
   const base = vscode.Uri.joinPath(extensionUri, 'dist', 'webview');
   const jsUri = webview.asWebviewUri(vscode.Uri.joinPath(base, `${surface}.js`));
   const cssUri = webview.asWebviewUri(vscode.Uri.joinPath(base, `${surface}.css`));
+  // The o200k ranks are a runtime asset, not part of the bundle — the webview
+  // fetches them, so `connect-src` has to allow the extension's asset origin.
+  const ranksUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(extensionUri, 'dist', 'o200k_base.json'),
+  );
   const n = nonce();
   const csp = [
     "default-src 'none'",
@@ -61,6 +66,7 @@ function webviewHtml(
     `script-src 'nonce-${n}'`,
     `img-src ${webview.cspSource} data:`,
     `font-src ${webview.cspSource}`,
+    `connect-src ${webview.cspSource}`,
   ].join('; ');
   return `<!doctype html>
 <html lang="en">
@@ -69,7 +75,9 @@ function webviewHtml(
 <meta http-equiv="Content-Security-Policy" content="${csp}">
 <link rel="stylesheet" href="${cssUri}">
 </head>
-<body><div id="app"></div><script nonce="${n}" src="${jsUri}"></script></body>
+<body><div id="app"></div>
+<script nonce="${n}">window.__RANKS_URL__ = ${JSON.stringify(String(ranksUri))};</script>
+<script nonce="${n}" src="${jsUri}"></script></body>
 </html>`;
 }
 
@@ -157,6 +165,16 @@ function openPanel(
 }
 
 export function activate(context: vscode.ExtensionContext): void {
+  // Ranks ship as a JSON asset rather than inlined in the bundle; load them so
+  // host-side instruction measurement counts exactly (it estimates until then).
+  void initTokenizer(async () => {
+    const uri = vscode.Uri.joinPath(context.extensionUri, 'dist', 'o200k_base.json');
+    const bytes = await vscode.workspace.fs.readFile(uri);
+    return JSON.parse(new TextDecoder().decode(bytes));
+  }).catch((err) => {
+    console.error('tokenmancer: could not load o200k ranks, using estimates', err);
+  });
+
   // Activation is now `onStartupFinished`, so this runs in every window. Keep it
   // to one config read: `discoverWorkspaces()` is deferred to the first tail,
   // and the status bar only appears when there is something to say.

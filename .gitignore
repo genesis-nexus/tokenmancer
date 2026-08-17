@@ -18,6 +18,9 @@ coverage/
 npm-debug.log*
 pnpm-debug.log*
 
+# Runtime: the paste inbox the server creates next to its cwd
+copilot-meter-inbox.jsonl
+
 # Env
 .env
 .env.local

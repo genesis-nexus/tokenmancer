@@ -6,6 +6,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   type AlertEvent,
+  initTokenizer,
   type MeterEvent,
   type PartialConfig,
   type TokenmancerConfig,
@@ -56,6 +57,7 @@ const CONTENT_TYPE: Record<string, string> = {
   // octet-stream fallback is refused as an image and the favicon never renders.
   '.svg': 'image/svg+xml; charset=utf-8',
   '.png': 'image/png',
+  '.json': 'application/json; charset=utf-8',
 };
 
 const SURFACE_TITLE: Record<string, string> = {
@@ -280,7 +282,7 @@ export function startServer(opts: StartServerOptions): Promise<RunningServer> {
   function serveAsset(res: http.ServerResponse, name: string): void {
     // Allowlisted by extension, so a traversal or a stray file in dist/public
     // can never be served. Every type here must also have a CONTENT_TYPE entry.
-    if (!/^[a-z0-9.\-]+\.(js|css|map|svg|png)$/i.test(name)) {
+    if (!/^[a-z0-9._\-]+\.(js|css|map|svg|png|json)$/i.test(name)) {
       sendText(res, 404, 'not found');
       return;
     }
@@ -575,6 +577,14 @@ export async function main(): Promise<void> {
   // Seed a config file on first run so there is something to edit.
   const created = ensureConfigFile();
   const { config, sources, problems } = loadConfig({ overrides });
+
+  // Ranks ship next to the bundles rather than inside them; load them so
+  // server-side instruction measurement counts exactly (it estimates until then).
+  await initTokenizer(async () =>
+    JSON.parse(await fs.promises.readFile(path.join(PUBLIC_DIR, 'o200k_base.json'), 'utf8')),
+  ).catch((err) => {
+    console.warn('could not load o200k ranks, using estimates:', err?.message ?? err);
+  });
 
   const s = await startServer({ ...opts, config, overrides });
   const link = `${s.url}?token=${s.token}`;

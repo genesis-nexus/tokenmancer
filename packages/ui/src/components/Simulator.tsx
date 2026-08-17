@@ -10,6 +10,7 @@ import {
 import { useMemo, useState } from 'preact/hooks';
 import { fmtCr, fmtTok } from '../format.js';
 import { SEG, SEG_COLOR, type TooltipData } from '../pricing-ui.js';
+import { useTokenizer } from '../tokenizer-boot.js';
 import { ThemeToggle } from './ThemeToggle.js';
 import { TooltipLayer, ttAttr } from './TooltipLayer.js';
 
@@ -30,7 +31,11 @@ export function Simulator({
   const [scenario, setScenario] = useState<Scenario>('cached');
   const [auto, setAuto] = useState(false);
 
-  const promptTokens = useMemo(() => countTokens(text), [text]);
+  // Ranks load asynchronously; until they land `countTokens` returns an estimate,
+  // so recount when readiness flips.
+  const tokenizerReady = useTokenizer();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: countTokens reads tokenizer module state, so readiness is a real input the linter can't see.
+  const promptTokens = useMemo(() => countTokens(text), [text, tokenizerReady]);
   const input = promptTokens + Math.max(0, attached);
   const cacheable = Math.round((input * cacheablePct) / 100);
   const cacheRead = scenario === 'cached' ? cacheable : 0;
@@ -238,9 +243,9 @@ export function Simulator({
       </div>
 
       <div class="foot">
-        Token counts are exact o200k (bundled — no network); cross-model counts are a faithful
-        proxy. The Auto discount is a simulator lever only — real billed calls are never discounted
-        here.
+        Token counts are {tokenizerReady ? 'exact o200k' : 'estimates until the tokenizer loads'}{' '}
+        (local asset — no network); cross-model counts are a faithful proxy. The Auto discount is a
+        simulator lever only — real billed calls are never discounted here.
       </div>
       <TooltipLayer />
     </div>

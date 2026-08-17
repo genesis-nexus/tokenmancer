@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Copilot Live Meter — the agent loop, priced</title>
+<style>
+  :root{
+    --page:#0d0d0d; --surface:#1a1a19; --surface2:#242423;
+    --ink:#ffffff; --ink2:#c3c2b7; --muted:#898781;
+    --line:rgba(255,255,255,.10); --track:#2c2c2a;
+    --read:#3987e5; --write:#008300; --fresh:#d55181; --out:#c98500;
+    --good:#0ca30c; --crit:#d03b3b;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--page);color:var(--ink2);font-family:var(--sans);font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:980px;margin:0 auto;padding:0 20px 72px}
+
+  /* ---- masthead ---- */
+  .mast{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:26px 0 14px;flex-wrap:wrap}
+  .mast h1{font-size:17px;font-weight:600;color:var(--ink);margin:0;letter-spacing:-.01em}
+  .mast .sub{margin:2px 0 0;color:var(--muted);font-size:12.5px}
+  .mastRight{display:flex;align-items:center;gap:16px;padding-top:3px}
+  .conn{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted)}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+  .dot.live{background:var(--good)} .dot.down{background:var(--crit)}
+  a.navlink{color:var(--ink2);font-size:12px;text-decoration:none;border-bottom:1px solid var(--line)}
+  a.navlink:hover{color:var(--ink);border-color:var(--ink2)}
+
+  /* ---- workspace bar ---- */
+  .wsbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:0 0 16px;border-bottom:1px solid var(--line)}
+  .wsbar label{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+  select{appearance:none;background:transparent;border:1px solid var(--line);color:var(--ink2);font:inherit;font-size:12.5px;
+    padding:7px 28px 7px 10px;border-radius:6px;cursor:pointer;min-width:240px;flex:1;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7'%3E%3Cpath fill='%23898781' d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 9px center}
+  select:hover{border-color:var(--muted)}
+  select:focus{outline:none;border-color:var(--ink2)}
+  select option{background:var(--surface);color:var(--ink2)}
+  .btn{appearance:none;border:1px solid var(--line);background:transparent;color:var(--ink2);font:inherit;font-size:12px;
+    padding:7px 13px;border-radius:6px;cursor:pointer;white-space:nowrap}
+  .btn:hover{border-color:var(--muted);color:var(--ink)}
+  .btn.primary{background:var(--ink);border-color:var(--ink);color:var(--page);font-weight:600}
+  .btn.primary:hover{opacity:.85}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .wsmsg{flex-basis:100%;font-size:11.5px;color:var(--muted)}
+  .wsmsg b{color:var(--ink2);font-weight:600}
+
+  /* ---- sticky readout ---- */
+  .readout{position:sticky;top:0;z-index:20;background:rgba(13,13,13,.92);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);margin:0 -20px;padding:13px 20px 12px}
+  .rrow{max-width:940px;margin:0 auto;display:flex;align-items:flex-start;gap:30px;flex-wrap:wrap}
+  .stat .lbl{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+  .stat .val{font-size:15px;font-weight:600;color:var(--ink);line-height:1.2}
+  .stat.hero .val{font-size:30px;line-height:1.05;letter-spacing:-.01em}
+  .stat.hero .val small{font-size:14px;font-weight:500;color:var(--muted);margin-left:2px}
+  .stat .sub{font-size:11px;color:var(--muted);margin-top:3px}
+  .mrows{margin-top:2px}
+  .mrow{display:flex;gap:10px;font-size:11.5px;color:var(--ink2);font-variant-numeric:tabular-nums}
+  .mrow em{font-style:normal;color:var(--muted);margin-left:auto}
+  #newSession{margin-left:auto;align-self:center}
+
+  /* ---- instructions panel ---- */
+  details.instr{border:1px solid var(--line);border-radius:10px;margin:16px 0 0;background:var(--surface)}
+  details.instr summary{cursor:pointer;list-style:none;padding:10px 14px;font-size:12.5px;color:var(--ink2);display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+  details.instr summary::-webkit-details-marker{display:none}
+  .chev{color:var(--muted);font-size:10px;transition:transform .15s}
+  details[open] > summary .chev{transform:rotate(90deg)}
+  details.instr summary b{color:var(--ink);font-weight:600}
+  .isum{color:var(--muted);font-size:11.5px}
+  .isum b{color:var(--ink2)}
+  .ibody{padding:2px 14px 14px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;border-top:1px solid var(--line);padding-top:12px}
+  @media(max-width:720px){.ibody{grid-template-columns:1fr}}
+  .ilbl{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
+  .ichips{display:flex;flex-wrap:wrap;gap:5px}
+  .ichip{font-family:var(--mono);font-size:10.5px;padding:2px 8px;border-radius:5px;border:1px solid var(--line);color:var(--ink2)}
+  .ichip i{font-style:normal;color:var(--muted);margin-left:4px}
+  .inone{color:var(--muted);font-size:11.5px}
+  .idet{margin-top:8px}
+  .idet summary{cursor:pointer;font-size:11px;color:var(--muted);list-style:none}
+  .idet summary:hover{color:var(--ink2)}
+  .idet summary::-webkit-details-marker{display:none}
+  .idetbody{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:6px;line-height:1.6;word-break:break-word}
+  .ifoot{padding:0 14px 12px;font-size:11px;color:var(--muted)}
+
+  /* ---- feed head / legend ---- */
+  .feedHead{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;margin:20px 0 10px}
+  .feedLbl{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .legend{display:flex;gap:14px;margin-left:auto;font-size:11px;color:var(--muted);flex-wrap:wrap}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .sw{width:8px;height:8px;border-radius:2px;display:inline-block}
+
+  details.help{margin:0 0 12px;border:1px solid var(--line);border-radius:8px}
+  details.help summary{cursor:pointer;list-style:none;padding:8px 12px;font-size:12px;color:var(--ink2);display:flex;align-items:center;gap:8px}
+  details.help summary::-webkit-details-marker{display:none}
+  details.help .hbody{padding:2px 12px 12px;color:var(--muted);font-size:12.5px;line-height:1.65;max-width:74ch}
+  details.help .hbody b{color:var(--ink2);font-weight:600}
+
+  /* ---- loops ---- */
+  .feed{display:flex;flex-direction:column;gap:14px}
+  .empty{color:var(--muted);text-align:center;padding:48px 20px;font-size:12.5px;border:1px solid var(--line);border-radius:10px}
+  .loop{border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow:hidden}
+  .loop.fresh{animation:pop .35s ease}
+  @keyframes pop{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+  .loopHead{padding:12px 16px 13px}
+  .loopMeta{display:flex;align-items:baseline;gap:10px;font-size:11px;color:var(--muted)}
+  .loopMeta .cost{margin-left:auto;font-size:16px;font-weight:600;color:var(--ink);font-variant-numeric:normal}
+  .loopMeta .cost small{font-size:11px;font-weight:500;color:var(--muted)}
+  .loopPrompt{font-size:13.5px;color:var(--ink);margin:5px 0 10px;line-height:1.45}
+  .loopPrompt .noPrompt{color:var(--muted)}
+  .barHit{padding:6px 0;cursor:default;outline:none}
+  .barHit:focus-visible .bar{box-shadow:0 0 0 1px var(--ink2)}
+  .bar{display:flex;gap:2px;height:10px;background:var(--track);border-radius:0 4px 4px 0;overflow:hidden}
+  .bar i{height:100%}
+  .bar i:last-child{border-radius:0 4px 4px 0}
+  .loopStats{display:flex;gap:16px;font-size:11px;color:var(--muted);flex-wrap:wrap;font-variant-numeric:tabular-nums}
+  .loopStats b{color:var(--ink2);font-weight:600}
+
+  /* ---- steps ---- */
+  .steps{border-top:1px solid var(--line);padding:6px 16px 12px}
+  .step{display:grid;gap:2px 10px;align-items:center;padding:6px 0;
+    grid-template-columns:20px minmax(150px,230px) minmax(80px,1fr) 128px 58px;
+    grid-template-areas:"num kind bar tok cost"}
+  .step.hd{padding:4px 0 2px;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .stepNum{grid-area:num;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .kindCol{grid-area:kind;min-width:0}
+  .kindTop{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink2);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .kindTop .ic{color:var(--muted);font-size:11px;flex:none}
+  .kindTop .flag{color:var(--muted);font-size:10px;flex:none}
+  .kindSub{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .kindSub .mdl{font-family:var(--mono);font-size:10px}
+  .sbarHit{grid-area:bar;padding:8px 0;cursor:default;outline:none;align-self:center}
+  .sbarHit:focus-visible .sTrack{box-shadow:0 0 0 1px var(--ink2)}
+  .sTrack{height:8px;background:var(--track);border-radius:0 4px 4px 0;overflow:hidden}
+  .sbar{display:flex;gap:2px;height:100%}
+  .sbar i{height:100%}
+  .sbar i:last-child{border-radius:0 4px 4px 0}
+  .tokCol{grid-area:tok;text-align:right;font-size:11.5px;color:var(--ink2);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .tokCol .ar{color:var(--muted)}
+  .costCol{grid-area:cost;text-align:right;font-size:12px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .costCol.free{color:var(--muted);font-weight:400}
+  .costCol .es{color:var(--muted);font-weight:400}
+  @media(max-width:720px){
+    .step{grid-template-columns:20px minmax(0,1fr) auto auto;
+      grid-template-areas:"num kind tok cost" "num bar bar bar"}
+    .step.hd .sbarHit{display:none}
+  }
+
+  details.snip{margin:2px 0 4px 30px}
+  details.snip summary{cursor:pointer;list-style:none;font-size:10.5px;color:var(--muted)}
+  details.snip summary::-webkit-details-marker{display:none}
+  details.snip summary:hover{color:var(--ink2)}
+  details.snip pre{margin:6px 0 0;background:var(--page);border:1px solid var(--line);border-radius:6px;padding:8px 11px;
+    font-family:var(--mono);font-size:10.5px;color:var(--muted);line-height:1.5;white-space:pre-wrap;word-break:break-word;max-height:140px;overflow-y:auto}
+
+  details.stepTbl{margin-top:6px}
+  details.stepTbl summary{cursor:pointer;list-style:none;font-size:11px;color:var(--muted)}
+  details.stepTbl summary::-webkit-details-marker{display:none}
+  details.stepTbl summary:hover{color:var(--ink2)}
+  .tblWrap{overflow-x:auto;margin-top:8px}
+  table.stepTable{border-collapse:collapse;width:100%;font-size:11px;font-variant-numeric:tabular-nums}
+  table.stepTable th{font-size:9.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:500;text-align:right;padding:3px 8px;border-bottom:1px solid var(--line)}
+  table.stepTable th:nth-child(-n+4){text-align:left}
+  table.stepTable td{padding:3px 8px;color:var(--ink2);text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+  table.stepTable td:nth-child(-n+4){text-align:left}
+  table.stepTable tr:last-child td{border-bottom:none}
+
+  /* ---- tooltip ---- */
+  #tt{position:fixed;z-index:50;display:none;pointer-events:none;background:var(--surface2);border:1px solid var(--line);
+    border-radius:8px;padding:8px 10px;font-size:11.5px;min-width:170px;box-shadow:0 6px 20px rgba(0,0,0,.45)}
+  #tt .hd{color:var(--muted);font-size:10.5px;margin-bottom:4px}
+  #tt .r{display:flex;align-items:center;gap:7px;padding:1px 0}
+  #tt .k{width:10px;height:3px;border-radius:2px;flex:none}
+  #tt .l{color:var(--ink2)}
+  #tt .v{margin-left:auto;padding-left:14px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+  #tt .nt{color:var(--muted);font-size:10.5px;margin-top:4px;border-top:1px solid var(--line);padding-top:4px}
+
+  .foot{margin-top:28px;border-top:1px solid var(--line);padding-top:14px;color:var(--muted);font-size:11.5px;line-height:1.6}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="mast">
+    <div>
+      <h1>Copilot Live Meter</h1>
+      <p class="sub">The agent loop, priced — every step, its model, its cost, live from the debug log.</p>
+    </div>
+    <div class="mastRight">
+      <span class="conn"><span class="dot" id="connDot"></span><span id="connTxt">connecting…</span></span>
+      <a class="navlink" href="/sessions">Past sessions →</a>
+    </div>
+  </header>
+
+  <div class="wsbar" id="wsbar">
+    <label for="wsSelect">Workspace</label>
+    <select id="wsSelect"><option value="">Loading workspaces…</option></select>
+    <button class="btn primary" id="wsTailBtn" disabled>▶ Tail live</button>
+    <div class="wsmsg" id="wsMsg">Pick any VS Code project on this machine (newest first) to point the meter at its live Copilot log.</div>
+  </div>
+
+  <div class="readout">
+    <div class="rrow">
+      <div class="stat hero">
+        <div class="lbl">Session cost</div>
+        <div class="val" id="gAic">0.000<small>cr</small></div>
+        <div class="sub" id="gUsd">$0.0000 · <span id="gCalls">0</span> calls</div>
+      </div>
+      <div class="stat">
+        <div class="lbl">Tokens</div>
+        <div class="val" id="gTok">0</div>
+        <div class="sub" id="gTokenBreakdown">in — · out —</div>
+      </div>
+      <div class="stat">
+        <div class="lbl">Loops</div>
+        <div class="val" id="gLoops">0</div>
+        <div class="sub" id="gSteps">0 steps</div>
+      </div>
+      <div class="stat">
+        <div class="lbl">Model spend</div>
+        <div class="mrows" id="gModels"><span class="sub">—</span></div>
+      </div>
+      <button class="btn" id="newSession">⟲ New session</button>
+    </div>
+  </div>
+
+  <details class="instr" id="instrPanel" style="display:none"></details>
+
+  <div class="feedHead">
+    <span class="feedLbl">Agent loops · newest first</span>
+    <div class="legend">
+      <span><i class="sw" style="background:var(--read)"></i>cache-read</span>
+      <span><i class="sw" style="background:var(--write)"></i>cache-write</span>
+      <span><i class="sw" style="background:var(--fresh)"></i>fresh input</span>
+      <span><i class="sw" style="background:var(--out)"></i>output</span>
+    </div>
+  </div>
+
+  <details class="help">
+    <summary><span class="chev">▶</span>How to read this meter</summary>
+    <div class="hbody">
+      <b>One prompt = one loop card.</b> Steps run top to bottom; each is one model round-trip.
+      The bar on a step is that call's <b>context window</b>, scaled to the loop's largest — it grows step after
+      step because the whole conversation is re-sent on every call. Its segments show who absorbed it:
+      cache-read (cheap), cache-write (one-time premium), fresh input (full price).
+      The bar under the prompt splits the <b>loop's cost</b> — watch output, a few hundred tokens, take the
+      biggest slice of the bill. Hover any bar for exact numbers; a loop's <b>step table</b> holds every figure.
+    </div>
+  </details>
+
+  <div class="feed" id="feed">
+    <div class="empty" id="empty">Waiting for Copilot activity — run an Agent request in VS Code, or paste a usage block into the inbox file.</div>
+  </div>
+
+  <div class="foot">
+    Costs marked ≈ are estimated from token counts × the rate table; unmarked costs come straight from the log's own credit fields.
+    Hover any bar for its split · every number is also in the loop's step table.
+  </div>
+</div>
+
+<div id="tt" role="tooltip"></div>
+
+<script>
+  const MODELS = {
+    'gpt-5-mini':{in:25,cached:2.5,cw:31,out:200},'gemini-3-flash':{in:50,cached:5,cw:63,out:300},
+    'gpt-5.3-codex':{in:25,cached:2.5,cw:31,out:200},
+    'claude-haiku-4.5':{in:100,cached:10,cw:125,out:500},'gpt-4.1':{in:200,cached:50,cw:250,out:800},
+    'claude-sonnet-4.6':{in:300,cached:30,cw:375,out:1500},'gemini-3.1-pro':{in:200,cached:20,cw:250,out:1200},
+    'claude-opus-4.8':{in:500,cached:50,cw:625,out:2500},'gpt-5.5':{in:500,cached:50,cw:625,out:3000},
+  };
+  function rateFor(model){
+    const n=String(model||'').toLowerCase().replace(/[-_ .]/g,'');
+    if(n.includes('codex'))return MODELS['gpt-5.3-codex'];
+    if(n.includes('opus'))return MODELS['claude-opus-4.8'];
+    if(n.includes('sonnet'))return MODELS['claude-sonnet-4.6'];
+    if(n.includes('haiku'))return MODELS['claude-haiku-4.5'];
+    if(n.includes('gpt5mini'))return MODELS['gpt-5-mini'];
+    if(n.includes('gpt55'))return MODELS['gpt-5.5'];
+    if(n.includes('gpt41'))return MODELS['gpt-4.1'];
+    if(n.includes('flash'))return MODELS['gemini-3-flash'];
+    if(n.includes('gemini'))return MODELS['gemini-3.1-pro'];
+    return MODELS['claude-sonnet-4.6'];
+  }
+  const STEP_META = {
+    plan:  {label:'Plan / Reason', icon:'◆'},
+    read:  {label:'Read file',     icon:'▤'},
+    search:{label:'Search repo',   icon:'⌕'},
+    edit:  {label:'Edit code',     icon:'✎'},
+    verify:{label:'Verify / Test', icon:'✓'},
+    tool:  {label:'Tool call',     icon:'⚙︎'},
+    chat:  {label:'Chat reply',    icon:'❯'},
+    llm:   {label:'LLM request',   icon:'·'},
+  };
+  function stepMeta(k){return STEP_META[k]||STEP_META.llm;}
+  // cost split of one billed call, in credits — used by bars, tooltips, and the step table
+  function costParts(ev){
+    const r=rateFor(ev.model);
+    return {read:ev.cacheRead*r.cached/1e6, write:ev.cacheWrite*r.cw/1e6,
+            fresh:ev.freshInput*r.in/1e6, out:ev.completion*r.out/1e6};
+  }
+  const SEG=[['read','cache-read','var(--read)'],['write','cache-write','var(--write)'],
+             ['fresh','fresh input','var(--fresh)'],['out','output','var(--out)']];
+
+  const POOL=5000;
+  let sAic=0, sCalls=0, sSteps=0, sTok=0, sInTok=0, sOutTok=0;
+  const sModels=new Map();       // model -> {calls, aic, tok}
+  const groups=new Map();        // groupId -> group state
+  const feed=document.getElementById('feed');
+  let empty=document.getElementById('empty');
+
+  const fmtCr=n=>n.toFixed(n<1?3:n<10?2:1);
+  const fmtTok=n=>n>=1000?(n/1000).toFixed(n<10000?1:0)+'k':''+n;
+  const escHtml=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const escAttr=s=>String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  const shortModel=m=>String(m||'').replace(/^(claude-|gpt-|gemini-)/,'').slice(0,16);
+  function fmtTime(ts){return new Date(ts).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});}
+  const ttAttr=obj=>`data-tt="${escAttr(JSON.stringify(obj))}" tabindex="0"`;
+
+  function updateTotals(){
+    document.getElementById('gAic').innerHTML=fmtCr(sAic)+'<small>cr</small>';
+    const poolPct=Math.min(100,sAic/POOL*100);
+    document.getElementById('gUsd').innerHTML='$'+(sAic*0.01).toFixed(4)+' · <span id="gCalls">'+sCalls+'</span> calls · '+poolPct.toFixed(poolPct<1?2:1)+'% of 5,000-cr pool';
+    document.getElementById('gTok').textContent=fmtTok(sTok);
+    document.getElementById('gTokenBreakdown').textContent='in '+fmtTok(sInTok)+' · out '+fmtTok(sOutTok);
+    document.getElementById('gLoops').textContent=groups.size;
+    document.getElementById('gSteps').textContent=sSteps+' steps · '+sCalls+' billed';
+    const mEl=document.getElementById('gModels');
+    mEl.innerHTML=[...sModels.entries()].sort((a,b)=>b[1].aic-a[1].aic).map(([m,v])=>
+      `<span class="mrow" title="${escAttr(m)} · ${v.calls} calls">${escHtml(shortModel(m))}<em>${fmtCr(v.aic)} cr</em></span>`).join('')||'<span class="sub">—</span>';
+    refreshInstrImpact();
+  }
+
+  // ---- custom-instruction panel ----
+  let instrSummary=null;
+  function dominantModel(){ let dom='claude-sonnet-4.6',n=0; for(const [m,v] of sModels.entries()) if(v.calls>n){n=v.calls;dom=m;} return dom; }
+  function instrImpact(s){
+    const r=rateFor(dominantModel()); const billed=Math.max(sCalls,1);
+    const first=s.totalTokens/1e6*r.in, rest=s.totalTokens/1e6*r.cached*Math.max(0,billed-1);
+    return {billed, aic:first+rest};
+  }
+  function refreshInstrImpact(){
+    if(!instrSummary) return;
+    const big=document.getElementById('instrImpactSub'); if(!big) return;
+    const s=instrSummary;
+    if(!s.totalTokens){ big.textContent='· files not found on disk to measure'; return; }
+    const im=instrImpact(s);
+    big.innerHTML='· ≈ <b>'+fmtCr(im.aic)+' cr</b> across '+im.billed+' call'+(im.billed>1?'s':'')+' this session (est)';
+  }
+  function renderInstrPanel(){
+    const el=document.getElementById('instrPanel'); if(!el) return;
+    const s=instrSummary;
+    if(!s){ el.style.display='none'; el.open=false; window.__hasInstr=false; return; }
+    const active=s.resolvedCount>0 || s.contextIncluded.length>0 || s.loaded.length>0;
+    window.__hasInstr=active;
+    el.style.display='block';
+    const fileTok=Object.fromEntries((s.files||[]).map(f=>[f.name,f.tokens]));
+    const tokBadge=name=> fileTok[name]!=null?`<i>${fmtTok(fileTok[name])}</i>`:'';
+    const chips=(arr)=>arr.length?arr.map(x=>`<span class="ichip">${escHtml(x)}${tokBadge(x)}</span>`).join(''):'<span class="inone">none</span>';
+    const head= active
+      ? `<b>Custom instructions</b> — ≈ ${s.totalTokens?fmtTok(s.totalTokens)+' tok':'?'} riding on every call <span class="isum" id="instrImpactSub"></span>`
+      : `<b>Custom instructions</b> <span class="isum">— none resolved</span><span id="instrImpactSub" style="display:none"></span>`;
+    el.innerHTML=`
+      <summary><span class="chev">▶</span>${head}</summary>
+      <div class="ibody">
+        <div>
+          <div class="ilbl">Always in context — every turn</div>
+          <div class="ichips">${chips(s.contextIncluded)}</div>
+        </div>
+        <div>
+          <div class="ilbl">Loaded — applyTo-scoped</div>
+          <div class="ichips">${chips(s.loaded)}</div>
+        </div>
+        <div>
+          <div class="ilbl">On-demand catalog</div>
+          <div class="ichips">
+            <span class="ichip">${s.onDemand.instructions.length}<i>instr</i></span>
+            <span class="ichip">${s.onDemand.skills.length}<i>skills</i></span>
+            <span class="ichip">${s.onDemand.agents.length}<i>agents</i></span>
+          </div>
+          <details class="idet"><summary>show catalog</summary><div class="idetbody">${
+            ['instructions','skills','agents'].map(k=>s.onDemand[k].length?`<div><b>${k}</b> (${s.onDemand[k].length}): ${escHtml(s.onDemand[k].join(', '))}</div>`:'').join('')||'<div>none</div>'
+          }</div></details>
+        </div>
+      </div>
+      ${s.folders&&s.folders.length?`<div class="ifoot"><details class="idet"><summary>${s.folders.length} instruction folder(s) searched${s.discoveryMs!=null?' · resolved '+s.resolvedCount+' in '+s.discoveryMs+'ms':''}</summary><div class="idetbody">${s.folders.map(f=>`<div>${escHtml(f)}</div>`).join('')}</div></details></div>`:''}`;
+    refreshInstrImpact();
+  }
+
+  function ensureGroup(ev){
+    const gid=ev.groupId||'ungrouped';
+    if(groups.has(gid)) return groups.get(gid);
+    if(empty && empty.parentNode){ empty.remove(); empty=null; }
+    const el=document.createElement('div');
+    el.className='loop fresh';
+    feed.prepend(el);
+    setTimeout(()=>el.classList.remove('fresh'),400);
+    const g={el, index:ev.promptGroupIndex||groups.size+1,
+      promptText:'', startTs:ev.ts, list:[],
+      aic:0, prompt_:0, completion:0, cacheRead:0, cacheWrite:0, fresh:0,
+      cParts:{read:0,write:0,fresh:0,out:0}, models:new Set()};
+    groups.set(gid,g);
+    return g;
+  }
+
+  function segBar(parts,total,extraClass){
+    // one stacked bar: only nonzero segments, 2px surface gaps, rounded data-end
+    if(!(total>0)) return `<div class="bar ${extraClass||''}"></div>`;
+    return `<div class="bar ${extraClass||''}">`+SEG.map(([k,,c])=>
+      parts[k]>0?`<i style="width:${parts[k]/total*100}%;background:${c}"></i>`:'').join('')+`</div>`;
+  }
+
+  function renderGroup(g){
+    const maxPrompt=Math.max(...g.list.map(s=>s.prompt||0),1);
+    const loopCost=g.cParts.read+g.cParts.write+g.cParts.fresh+g.cParts.out;
+    const outPct=loopCost>0?Math.round(g.cParts.out/loopCost*100):0;
+    const cachePct=g.prompt_>0?Math.round(g.cacheRead/g.prompt_*100):0;
+    const billed=g.list.filter(s=>!s.isTool);
+    const allExact=billed.length>0&&billed.every(s=>s.exact);
+    const loopTT={t:`loop cost · ${fmtCr(g.aic)} cr`,
+      rows:SEG.map(([k,label],i)=>{
+        const tok=[g.cacheRead,g.cacheWrite,g.fresh,g.completion][i];
+        return [getSegColor(k),label,`${fmtTok(tok)} tok · ${fmtCr(g.cParts[k])} cr`];
+      }),
+      n:`output = ${outPct}% of this loop's cost`};
+    const head=`<div class="loopHead">
+        <div class="loopMeta">
+          <span>#${g.index}</span><span>${fmtTime(g.startTs)}</span>
+          <span>${g.list.length} steps</span>
+          <span class="cost">${allExact?'':'≈ '}${fmtCr(g.aic)} <small>cr</small></span>
+        </div>
+        <div class="loopPrompt">${g.promptText?escHtml(g.promptText):'<span class="noPrompt">[prompt text not in log]</span>'}</div>
+        <div class="barHit" ${ttAttr(loopTT)}>${segBar(g.cParts,loopCost)}</div>
+        <div class="loopStats">
+          <span>in <b>${fmtTok(g.prompt_)}</b> · out <b>${fmtTok(g.completion)}</b></span>
+          ${cachePct>0?`<span>cache-hit <b>${cachePct}%</b></span>`:''}
+          <span>peak context <b>${fmtTok(maxPrompt)}</b></span>
+          ${[...g.models].length?`<span>${[...g.models].map(m=>escHtml(shortModel(m))).join(' · ')}</span>`:''}
+        </div>
+      </div>`;
+    const hdr=`<div class="step hd">
+        <span class="stepNum">#</span><span class="kindCol">step</span>
+        <span class="sbarHit" style="padding:0">context window →</span>
+        <span class="tokCol">ctx → out</span><span class="costCol" style="font-weight:500">cr</span>
+      </div>`;
+    const rows=g.list.map((s,i)=>renderStep(s,i+1,maxPrompt)).join('');
+    g.el.innerHTML=head+`<div class="steps">${hdr}${rows}${stepTable(g)}</div>`;
+  }
+
+  function getSegColor(k){return {read:'#3987e5',write:'#008300',fresh:'#d55181',out:'#c98500'}[k];}
+
+  function renderStep(ev,stepNo,maxPrompt){
+    const m=stepMeta(ev.stepKind);
+    if(ev.isTool){
+      return `<div class="step">
+        <span class="stepNum">${stepNo}</span>
+        <div class="kindCol">
+          <div class="kindTop"><span class="ic">${m.icon}</span>${m.label}${ev.toolName?` <span class="kindSub" style="display:inline">· ${escHtml(ev.toolName)}</span>`:''}</div>
+        </div>
+        <span class="sbarHit" style="padding:0"></span>
+        <span class="tokCol" style="color:var(--muted)">—</span>
+        <span class="costCol free">free</span>
+      </div>`;
+    }
+    const p=costParts(ev);
+    const cost=p.read+p.write+p.fresh+p.out;
+    const outPct=cost>0?Math.round(p.out/cost*100):0;
+    const ctxPct=Math.max(2,Math.round((ev.prompt||0)/maxPrompt*100));
+    const ctxTot=(ev.cacheRead+ev.cacheWrite+ev.freshInput)||1;
+    const tt={t:`step ${stepNo} · context ${fmtTok(ev.prompt)} tok`,
+      rows:[
+        [getSegColor('read'),'cache-read',`${fmtTok(ev.cacheRead)} tok · ${fmtCr(p.read)} cr`],
+        [getSegColor('write'),'cache-write',`${fmtTok(ev.cacheWrite)} tok · ${fmtCr(p.write)} cr`],
+        [getSegColor('fresh'),'fresh input',`${fmtTok(ev.freshInput)} tok · ${fmtCr(p.fresh)} cr`],
+        [getSegColor('out'),'output',`${fmtTok(ev.completion)} tok · ${fmtCr(p.out)} cr`],
+      ],
+      n:`output = ${outPct}% of this step's cost`};
+    const seg=(v,c)=>v>0?`<i style="width:${v/ctxTot*100}%;background:${c}"></i>`:'';
+    const tool=ev.toolName&&ev.toolName!=='plan'?escHtml(ev.toolName)+' · ':'';
+    const snip=(ev.promptSnippet||'').trim();
+    const showSnip=stepNo===1 && snip && !/^\[No |unavailable/i.test(snip);
+    const snippet=showSnip?`<details class="snip"><summary>▸ system payload</summary><pre>${escHtml(snip)}</pre></details>`:'';
+    return `<div class="step">
+      <span class="stepNum">${stepNo}</span>
+      <div class="kindCol">
+        <div class="kindTop"><span class="ic">${m.icon}</span>${m.label}${ev.systemPromptFile&&window.__hasInstr?'<span class="flag" title="Custom instructions rode along on this call">⚑</span>':''}</div>
+        <div class="kindSub">${tool}<span class="mdl">${escHtml(ev.model)}</span></div>
+      </div>
+      <div class="sbarHit" ${ttAttr(tt)}>
+        <div class="sTrack"><div class="sbar" style="width:${ctxPct}%">${seg(ev.cacheRead,'var(--read)')}${seg(ev.cacheWrite,'var(--write)')}${seg(ev.freshInput,'var(--fresh)')}</div></div>
+      </div>
+      <span class="tokCol">${fmtTok(ev.prompt)} <span class="ar">→</span> ${fmtTok(ev.completion)}</span>
+      <span class="costCol">${ev.exact?'':'<span class="es">≈ </span>'}${fmtCr(ev.aic)}</span>
+    </div>${snippet}`;
+  }
+
+  function stepTable(g){
+    const rows=g.list.map((s,i)=>{
+      if(s.isTool) return `<tr><td>${i+1}</td><td>${stepMeta(s.stepKind).label}</td><td>${escHtml(s.toolName||'')}</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>free</td></tr>`;
+      const p=costParts(s);
+      return `<tr><td>${i+1}</td><td>${stepMeta(s.stepKind).label}</td><td>${escHtml(s.toolName||'')}</td><td>${escHtml(shortModel(s.model))}</td>
+        <td>${(s.prompt||0).toLocaleString()}</td><td>${(s.freshInput||0).toLocaleString()}</td>
+        <td>${(s.cacheRead||0).toLocaleString()}</td><td>${(s.cacheWrite||0).toLocaleString()}</td>
+        <td>${(s.completion||0).toLocaleString()}</td><td>${s.exact?'':'≈ '}${fmtCr(s.aic)}</td></tr>`;
+    }).join('');
+    return `<details class="stepTbl"><summary>▸ step table — every number</summary><div class="tblWrap">
+      <table class="stepTable">
+        <tr><th>#</th><th>step</th><th>tool</th><th>model</th><th>ctx</th><th>fresh</th><th>cache-R</th><th>cache-W</th><th>out</th><th>cr</th></tr>
+        ${rows}
+      </table></div></details>`;
+  }
+
+  function addEvent(ev){
+    const g=ensureGroup(ev);
+    if(ev.userPrompt && !/unavailable|not in log|no linked/i.test(ev.userPrompt)) g.promptText=ev.userPrompt;
+    g.list.push(ev);
+    g.aic+=ev.aic; g.prompt_+=ev.prompt||0; g.completion+=ev.completion||0;
+    g.cacheRead+=ev.cacheRead||0; g.cacheWrite+=ev.cacheWrite||0; g.fresh+=ev.freshInput||0;
+    if(!ev.isTool){
+      const p=costParts(ev);
+      g.cParts.read+=p.read; g.cParts.write+=p.write; g.cParts.fresh+=p.fresh; g.cParts.out+=p.out;
+    }
+    if(ev.model) g.models.add(ev.model);
+    renderGroup(g);
+
+    // session rollups — tool steps count as steps but carry no billed cost/tokens
+    sAic+=ev.aic; sSteps++;
+    if(!ev.isTool){
+      sCalls++; sTok+=ev.prompt+ev.completion; sInTok+=ev.prompt; sOutTok+=ev.completion;
+      const mv=sModels.get(ev.model)||{calls:0,aic:0,tok:0}; mv.calls++; mv.aic+=ev.aic; mv.tok+=ev.prompt+ev.completion; sModels.set(ev.model,mv);
+    }
+    updateTotals();
+  }
+
+  function resetSession(){
+    sAic=sCalls=sSteps=sTok=sInTok=sOutTok=0; sModels.clear(); groups.clear();
+    instrSummary=null; renderInstrPanel();
+    feed.innerHTML='<div class="empty" id="empty">Waiting for the next agent loop…</div>';
+    empty=document.getElementById('empty');
+    updateTotals();
+  }
+
+  // ---- tooltip layer (hover + keyboard focus; values are also in text / the step table) ----
+  const tt=document.getElementById('tt');
+  function showTT(el,x,y){
+    let d; try{d=JSON.parse(el.dataset.tt);}catch(_){return;}
+    tt.textContent='';
+    if(d.t){const h=document.createElement('div');h.className='hd';h.textContent=d.t;tt.appendChild(h);}
+    (d.rows||[]).forEach(r=>{
+      const row=document.createElement('div');row.className='r';
+      if(r[0]){const k=document.createElement('span');k.className='k';k.style.background=r[0];row.appendChild(k);}
+      const l=document.createElement('span');l.className='l';l.textContent=r[1];row.appendChild(l);
+      const v=document.createElement('span');v.className='v';v.textContent=r[2];row.appendChild(v);
+      tt.appendChild(row);
+    });
+    if(d.n){const n=document.createElement('div');n.className='nt';n.textContent=d.n;tt.appendChild(n);}
+    tt.style.display='block';
+    moveTT(x,y);
+  }
+  function moveTT(x,y){
+    const r=tt.getBoundingClientRect();
+    let L=x+14, T=y+14;
+    if(L+r.width>innerWidth-8)L=x-r.width-10;
+    if(T+r.height>innerHeight-8)T=y-r.height-10;
+    tt.style.left=Math.max(8,L)+'px';tt.style.top=Math.max(8,T)+'px';
+  }
+  document.addEventListener('pointerover',e=>{const el=e.target.closest('[data-tt]');if(el)showTT(el,e.clientX,e.clientY);});
+  document.addEventListener('pointermove',e=>{
+    if(tt.style.display!=='block')return;
+    if(e.target.closest('[data-tt]'))moveTT(e.clientX,e.clientY); else tt.style.display='none';
+  });
+  document.addEventListener('pointerout',e=>{const el=e.target.closest('[data-tt]');if(el&&!(e.relatedTarget&&el.contains(e.relatedTarget)))tt.style.display='none';});
+  document.addEventListener('focusin',e=>{const el=e.target.closest('[data-tt]');if(el){const r=el.getBoundingClientRect();showTT(el,r.left+r.width/2,r.bottom);}});
+  document.addEventListener('focusout',()=>{tt.style.display='none';});
+
+  // ---- SSE ----
+  function connect(){
+    const es=new EventSource('/events');
+    es.onopen=()=>{document.getElementById('connDot').className='dot live';document.getElementById('connTxt').textContent='live';};
+    es.onerror=()=>{document.getElementById('connDot').className='dot down';document.getElementById('connTxt').textContent='reconnecting…';};
+    es.onmessage=e=>{ let m; try{m=JSON.parse(e.data);}catch(_){return;}
+      if(m.control==='session'){ resetSession(); return; }
+      if(m.meta==='instructions'){ instrSummary=m; renderInstrPanel(); return; }
+      addEvent(m);
+    };
+  }
+  connect();
+
+  document.getElementById('newSession').addEventListener('click',()=>{
+    fetch('/session/new',{method:'POST'}).catch(resetSession);
+  });
+
+  // ---- workspace picker: point the live tail at any project, no --tail flag ----
+  const wsSelect=document.getElementById('wsSelect');
+  const wsTailBtn=document.getElementById('wsTailBtn');
+  const wsMsg=document.getElementById('wsMsg');
+  async function loadWorkspaceBar(){
+    try{
+      const list=await (await fetch('/api/workspaces')).json();
+      wsSelect.innerHTML='';
+      if(!list.length){ wsSelect.innerHTML='<option value="">No workspaces with Copilot logs found</option>';
+        wsMsg.textContent='No VS Code workspaces with Copilot debug logs were found. Enable agent debug logging in VS Code, or use --inbox.'; return; }
+      wsSelect.innerHTML='<option value="">Select a workspace…</option>';
+      list.forEach(w=>{
+        const o=document.createElement('option'); o.value=w.id;
+        const chan=(w.channel&&w.channel!=='Code')?' · '+w.channel:'';
+        o.textContent=`${w.folderName} — ${w.modifiedStr} · ${w.sessionCount} session${w.sessionCount>1?'s':''}${chan}`;
+        wsSelect.appendChild(o);
+      });
+    }catch(e){ wsMsg.textContent='Failed to load workspaces: '+e.message; }
+  }
+  wsSelect.addEventListener('change',()=>{ wsTailBtn.disabled=!wsSelect.value; });
+  wsTailBtn.addEventListener('click',async()=>{
+    if(!wsSelect.value) return;
+    const label=wsSelect.selectedOptions[0].textContent;
+    wsMsg.textContent='Switching live tail to '+label+'…';
+    resetSession();
+    try{
+      const r=await fetch('/api/tail?ws='+encodeURIComponent(wsSelect.value),{method:'POST'});
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      const j=await r.json();
+      wsMsg.innerHTML='Now tailing <b>'+escHtml(j.workspace||label)+'</b> · '+escHtml(j.log||'main.jsonl')+' — send an Agent request in VS Code to see it here.';
+    }catch(e){ wsMsg.textContent='Failed to start live tail: '+e.message; }
+  });
+  loadWorkspaceBar();
+</script>
+</body>
+</html>

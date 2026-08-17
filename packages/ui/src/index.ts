@@ -23,6 +23,7 @@ export { ThemeToggle } from './components/ThemeToggle.js';
 export { TooltipLayer, ttAttr } from './components/TooltipLayer.js';
 export * from './components/Analytics/index.js';
 export { AnalyticsView } from './surfaces/AnalyticsView.js';
+export { bootTokenizer, useTokenizer } from './tokenizer-boot.js';
 export {
   type MeterTransport,
   SseTransport,
