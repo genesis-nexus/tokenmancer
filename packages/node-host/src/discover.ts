@@ -1,7 +1,12 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { extractObjects } from '@cte/core';
+import { type LogFormat, type ProviderId, extractObjects } from '@cte/core';
+import {
+  discoverClaudeSessionsIn,
+  discoverClaudeWorkspaces,
+  isClaudeWorkspaceId,
+} from './sources/claude.js';
 
 export interface SessionInfo {
   id: string;
@@ -19,6 +24,8 @@ export interface SessionInfo {
 
 export interface WorkspaceInfo {
   id: string;
+  /** Which meter this workspace's logs feed. */
+  provider: ProviderId;
   channel: string;
   storageRoot: string;
   debugLogsDir: string;
@@ -42,7 +49,8 @@ export function vsCodeStorageRoots(): string[] {
     const appdata = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
     for (const c of channels) bases.push(path.join(appdata, c, 'User', 'workspaceStorage'));
   } else {
-    for (const c of channels) bases.push(path.join(home, '.config', c, 'User', 'workspaceStorage'));
+    const config = process.env.XDG_CONFIG_HOME || path.join(home, '.config');
+    for (const c of channels) bases.push(path.join(config, c, 'User', 'workspaceStorage'));
   }
   return bases.filter((p) => {
     try {
@@ -72,6 +80,9 @@ export function readWorkspaceMeta(hashDir: string): WorkspaceMeta {
     } catch {
       // keep raw uri
     }
+    // file:///C:/Users/... decodes to "/C:/Users/..." — strip the leading
+    // slash before a Windows drive letter so it's a real, resolvable path.
+    folder = folder.replace(/^\/([a-zA-Z]:)/, '$1');
     const folderName = folder ? path.basename(folder.replace(/[\\/]$/, '')) : '';
     return { folder, folderName, isWorkspaceFile: !!j.workspace };
   } catch {
@@ -182,7 +193,7 @@ export function discoverSessionsIn(debugLogsDir: string): SessionInfo[] {
 }
 
 /** Every VS Code / Cursor workspace on this machine that has Copilot debug logs. */
-export function discoverWorkspaces(): WorkspaceInfo[] {
+export function discoverCopilotWorkspaces(): WorkspaceInfo[] {
   const out: WorkspaceInfo[] = [];
   for (const root of vsCodeStorageRoots()) {
     const channel = path.basename(path.dirname(path.dirname(root)));
@@ -215,6 +226,7 @@ export function discoverWorkspaces(): WorkspaceInfo[] {
       const modDate = new Date(modified || Date.now());
       out.push({
         id: hash,
+        provider: 'copilot',
         channel,
         storageRoot: root,
         debugLogsDir,
@@ -236,8 +248,34 @@ export function discoverWorkspaces(): WorkspaceInfo[] {
   return out.sort((a, b) => b.modified.localeCompare(a.modified));
 }
 
+/**
+ * Every metered workspace on this machine, across both providers.
+ *
+ * Copilot and Claude Code are listed as separate entries even when they point at
+ * the same folder: they are genuinely two different histories with two different
+ * session lists, and merging them here would force every id-keyed caller below to
+ * learn about providers. The UI groups them by `folder` for display instead.
+ */
+export function discoverWorkspaces(): WorkspaceInfo[] {
+  return [...discoverCopilotWorkspaces(), ...discoverClaudeWorkspaces()].sort((a, b) =>
+    b.modified.localeCompare(a.modified),
+  );
+}
+
 export function findWorkspace(wsId: string): WorkspaceInfo | undefined {
   return discoverWorkspaces().find((w) => w.id === wsId);
+}
+
+/** The transcript dialect a workspace's logs are written in. */
+export function formatForWorkspace(wsId: string): LogFormat {
+  return isClaudeWorkspaceId(wsId) ? 'claude' : 'copilot';
+}
+
+/** Sessions for a workspace, dispatched on the layout its provider uses. */
+export function sessionsForWorkspace(ws: WorkspaceInfo): SessionInfo[] {
+  return ws.provider === 'claude'
+    ? discoverClaudeSessionsIn(ws.debugLogsDir)
+    : discoverSessionsIn(ws.debugLogsDir);
 }
 
 export function resolveWorkspaceSessions(
@@ -245,7 +283,7 @@ export function resolveWorkspaceSessions(
 ): { ws: WorkspaceInfo; sessions: SessionInfo[] } | null {
   const ws = findWorkspace(wsId);
   if (!ws) return null;
-  return { ws, sessions: discoverSessionsIn(ws.debugLogsDir) };
+  return { ws, sessions: sessionsForWorkspace(ws) };
 }
 
 /** A log file name must be a bare `*.jsonl` — no path separators or traversal. */

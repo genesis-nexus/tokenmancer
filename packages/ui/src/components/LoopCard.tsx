@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { fmtCr, fmtTime, fmtTok, shortModel } from '../format.js';
-import { SEG, SEG_COLOR, type TooltipData } from '../pricing-ui.js';
+import { SEG, SEG_COLOR, type TooltipData, dominantCostPhrase } from '../pricing-ui.js';
+import { skillMode } from '../state/skill-store.js';
 import type { LoopGroup } from '../state/store.js';
 import { Step } from './Step.js';
 import { StepTable } from './StepTable.js';
@@ -14,7 +15,9 @@ interface LoopCardProps {
 
 export function LoopCard({ group: g, hasInstr, fresh }: LoopCardProps) {
   const [pop, setPop] = useState(fresh);
+  const [showSteps, setShowSteps] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const novice = skillMode.value === 'novice';
   useEffect(() => {
     if (!fresh) return;
     const t = setTimeout(() => setPop(false), 400);
@@ -61,7 +64,9 @@ export function LoopCard({ group: g, hasInstr, fresh }: LoopCardProps) {
                 class="noPrompt redactedTag"
                 title="Prompt text is redacted by default. Pass --show-prompts (web app) or enable Tokenmancer › Show Prompts (VS Code setting) to reveal it."
               >
-                🔒 {g.promptText}
+                {/* The hash is a de-duplication tag, not information — it only
+                    confuses someone who has not read the privacy docs yet. */}
+                🔒 {novice ? 'Your prompt — hidden for privacy' : g.promptText}
               </span>
             ) : (
               g.promptText
@@ -80,38 +85,58 @@ export function LoopCard({ group: g, hasInstr, fresh }: LoopCardProps) {
             )}
           </div>
         </div>
-        <div class="loopStats">
-          <span>
-            in <b>{fmtTok(g.prompt)}</b> · out <b>{fmtTok(g.completion)}</b>
-          </span>
-          {cachePct > 0 ? (
+        {novice ? (
+          <p class="loopPlain">{dominantCostPhrase(g.cParts)}</p>
+        ) : (
+          <div class="loopStats">
             <span>
-              cache-hit <b>{cachePct}%</b>
+              in <b>{fmtTok(g.prompt)}</b> · out <b>{fmtTok(g.completion)}</b>
             </span>
-          ) : null}
-          <span>
-            peak context <b>{fmtTok(maxPrompt)}</b>
-          </span>
-          {g.models.length ? <span>{g.models.map((m) => shortModel(m)).join(' · ')}</span> : null}
-        </div>
+            {cachePct > 0 ? (
+              <span>
+                cache-hit <b>{cachePct}%</b>
+              </span>
+            ) : null}
+            <span>
+              peak context <b>{fmtTok(maxPrompt)}</b>
+            </span>
+            {g.models.length ? <span>{g.models.map((m) => shortModel(m)).join(' · ')}</span> : null}
+          </div>
+        )}
       </div>
-      <div class="steps">
-        <div class="step hd">
-          <span class="stepNum">#</span>
-          <span class="kindCol">step</span>
-          <span class="sbarHit" style="padding:0">
-            context window →
-          </span>
-          <span class="tokCol">ctx → out</span>
-          <span class="costCol" style="font-weight:500">
-            cr
-          </span>
+
+      {/* In the simple view the step list is opt-in per loop: the summary above
+          is the answer, and the steps are there for the one card you get
+          curious about — which is how someone works up to the detailed view. */}
+      {novice && !showSteps ? (
+        <button type="button" class="loopExpand" onClick={() => setShowSteps(true)}>
+          ▸ Show the {g.steps.length} {g.steps.length === 1 ? 'step' : 'steps'} behind this
+        </button>
+      ) : (
+        <div class="steps">
+          <div class="step hd">
+            <span class="stepNum">#</span>
+            <span class="kindCol">step</span>
+            <span class="sbarHit" style="padding:0">
+              context window →
+            </span>
+            <span class="tokCol">ctx → out</span>
+            <span class="costCol" style="font-weight:500">
+              cr
+            </span>
+          </div>
+          {g.steps.map((s, i) => (
+            <Step key={s.id} ev={s} stepNo={i + 1} maxPrompt={maxPrompt} hasInstr={hasInstr} />
+          ))}
+          {novice ? (
+            <button type="button" class="loopExpand" onClick={() => setShowSteps(false)}>
+              ▾ Hide the steps
+            </button>
+          ) : (
+            <StepTable group={g} />
+          )}
         </div>
-        {g.steps.map((s, i) => (
-          <Step key={s.id} ev={s} stepNo={i + 1} maxPrompt={maxPrompt} hasInstr={hasInstr} />
-        ))}
-        <StepTable group={g} />
-      </div>
+      )}
     </div>
   );
 }

@@ -5,14 +5,16 @@ import {
   freshInput,
   parseAicFromText,
 } from '../pricing/credits.js';
-import { DEFAULT_MODEL, rateFor } from '../pricing/models.js';
+import { CREDIT_USD, DEFAULT_MODEL, rateFor } from '../pricing/models.js';
 import { classifyStep, harvest } from './harvest.js';
 import {
   type InstructionAccumulator,
   isInstructionRecord,
   parseInstructions,
+  repoRootsFromFolders,
 } from './instructions.js';
 import { extractPromptSnippet } from './prompt.js';
+import { parseToolArgs } from './tool-args.js';
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null;
@@ -52,6 +54,13 @@ export interface ProcessOptions {
   defaultModel?: string;
   /** Injected by the Node host to measure instruction files on disk (bytes/tokens). */
   measureInstructions?: (state: InstructionAccumulator) => void;
+  /**
+   * Workspace folders used to make tool targets repo-relative. The Node host
+   * knows these up front; otherwise they are derived from the instruction
+   * folders the log itself reports. A target that matches no root degrades to
+   * its basename, so this only improves precision — it is never required.
+   */
+  repoRoots?: string[];
 }
 
 function registerPromptRecord(rec: Record<string, unknown>, ctx: GroupingContext): string {
@@ -82,16 +91,57 @@ function linkRecordToPrompt(rec: Record<string, unknown>, ctx: GroupingContext):
   return groupId;
 }
 
-/** Everything about a step EXCEPT id + grouping (which only processRecord assigns). */
-type StepCore = Omit<
+/** Everything about a step EXCEPT id + grouping (which only `emitStep` assigns). */
+export type StepCore = Omit<
   StepEvent,
   'kind' | 'id' | 'groupId' | 'promptGroupIndex' | 'stepIndex' | 'userPrompt'
 >;
+
+/**
+ * Assign the grouping fields and emit. This is the funnel the contract's doc
+ * comment refers to: a format parser produces a StepCore and hands it here, and
+ * cannot construct a StepEvent any other way, so an ungrouped or prompt-less
+ * step stays structurally impossible however many log formats we support.
+ */
+export function emitStep(
+  core: StepCore,
+  groupId: string,
+  ctx: GroupingContext,
+  emit: (ev: MeterEvent) => void,
+): void {
+  const gid = groupId || 'ungrouped';
+  if (!ctx.promptIndexById.has(gid)) ctx.promptIndexById.set(gid, ctx.promptIndexById.size + 1);
+  const promptGroupIndex = ctx.promptIndexById.get(gid) ?? 1;
+  const stepIndex = (ctx.stepCountById.get(gid) ?? 0) + 1;
+  ctx.stepCountById.set(gid, stepIndex);
+  const userPrompt = ctx.promptById.get(gid) ?? '[Prompt text unavailable for this event]';
+
+  emit({
+    kind: 'step',
+    id: ++ctx.seq,
+    groupId: gid,
+    promptGroupIndex,
+    stepIndex,
+    userPrompt,
+    ...core,
+  });
+}
+
+/** Cap on the result payload we measure — the weight only needs to be comparable. */
+const MAX_RESULT_BYTES = 1_000_000;
+
+function resultBytesOf(attrs: Record<string, unknown> | undefined): number {
+  const r = attrs?.result ?? attrs?.output ?? attrs?.content;
+  if (r == null) return 0;
+  const s = typeof r === 'string' ? r : JSON.stringify(r);
+  return Math.min(s?.length ?? 0, MAX_RESULT_BYTES);
+}
 
 function buildStepCore(
   rec: Record<string, unknown>,
   source: EventOrigin,
   defaultModel: string,
+  repoRoots: readonly string[],
 ): StepCore | null {
   const h = harvest(rec, {});
   const hasTokens = h.prompt != null || h.completion != null;
@@ -133,20 +183,33 @@ function buildStepCore(
   const ts = typeof rec.ts === 'number' ? rec.ts : Date.now();
   const roundedAic = Number(aic.toFixed(6));
 
+  // Only tool steps have targets. An LLM step's cost is what a *previous* tool
+  // put in its context, which is the attribution engine's job, not the parser's.
+  const args = isToolStep ? parseToolArgs(attrs?.args, toolName, repoRoots) : null;
+
   return {
     ts,
     source,
+    provider: 'copilot',
     model,
     requestType,
     toolName,
     stepKind,
     isTool: isToolStep,
+    targets: args ? args.targets.map((t) => t.path) : [],
+    toolIntent: args ? args.intent : '',
+    toolQuery: args ? args.query : '',
+    resultBytes: args ? resultBytesOf(attrs) : 0,
     prompt,
     completion,
     cacheRead,
     cacheWrite,
+    // Copilot quotes a single cache-write rate and never says which TTL applied.
+    cacheWrite5m: 0,
+    cacheWrite1h: 0,
     freshInput: fresh,
     aic: roundedAic,
+    usd: Number((roundedAic * CREDIT_USD).toFixed(8)),
     exact: hasCredit || isToolStep,
     promptSnippet: snippet || '[No prompt/chat payload in this log event]',
     systemPromptFile: typeof attrs?.systemPromptFile === 'string' ? attrs.systemPromptFile : '',
@@ -205,25 +268,16 @@ export function processRecord(
     return;
   }
 
-  const core = buildStepCore(rec, source, opts.defaultModel ?? DEFAULT_MODEL);
+  // Host-supplied roots win; otherwise fall back to whatever the log's own
+  // instruction telemetry has revealed so far.
+  const repoRoots = opts.repoRoots?.length
+    ? opts.repoRoots
+    : ctx.instr
+      ? repoRootsFromFolders(ctx.instr.folders)
+      : [];
+
+  const core = buildStepCore(rec, source, opts.defaultModel ?? DEFAULT_MODEL, repoRoots);
   if (!core) return;
 
-  const groupId = linkRecordToPrompt(rec, ctx) || 'ungrouped';
-  if (!ctx.promptIndexById.has(groupId))
-    ctx.promptIndexById.set(groupId, ctx.promptIndexById.size + 1);
-  const promptGroupIndex = ctx.promptIndexById.get(groupId) ?? 1;
-  const stepIndex = (ctx.stepCountById.get(groupId) ?? 0) + 1;
-  ctx.stepCountById.set(groupId, stepIndex);
-  const userPrompt = ctx.promptById.get(groupId) ?? '[Prompt text unavailable for this event]';
-
-  const ev: StepEvent = {
-    kind: 'step',
-    id: ++ctx.seq,
-    groupId,
-    promptGroupIndex,
-    stepIndex,
-    userPrompt,
-    ...core,
-  };
-  emit(ev);
+  emitStep(core, linkRecordToPrompt(rec, ctx), ctx, emit);
 }

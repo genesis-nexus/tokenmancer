@@ -4,17 +4,32 @@ import * as fs from 'node:fs';
 import * as http from 'node:http';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { type MeterEvent, redactEvent } from '@cte/core';
 import {
+  type AlertEvent,
+  CONFIG_VERSION,
+  type MeterEvent,
+  type PartialConfig,
+  type TokenmancerConfig,
+  initTokenizer,
+  redactEvent,
+  validateConfig,
+} from '@cte/core';
+import {
+  BudgetRunner,
   type InboxController,
   type TailController,
   discoverWorkspaces,
+  ensureConfigFile,
+  formatForWorkspace,
   getWorkspaceAnalyticsWithInsights,
   isContained,
   isSafeLogFileName,
+  loadConfig,
   loadLogFile,
+  migrateConfigFile,
   resolveLogPath,
   resolveWorkspaceSessions,
+  saveConfigPatch,
   startLiveTail,
   watchInbox,
 } from '@cte/node-host';
@@ -30,11 +45,22 @@ import {
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(HERE, 'public');
 const RING_MAX = 200;
+/**
+ * Alerts get their own ring. The step ring evicts after 200 frames and is
+ * cleared outright on a new session, so a budget warning fired before you
+ * opened the tab would otherwise be lost — exactly when you most need it.
+ */
+const ALERT_RING_MAX = 20;
 
 const CONTENT_TYPE: Record<string, string> = {
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.map': 'application/json; charset=utf-8',
+  // Required, not cosmetic: responses carry `nosniff`, so an SVG served as the
+  // octet-stream fallback is refused as an image and the favicon never renders.
+  '.svg': 'image/svg+xml; charset=utf-8',
+  '.png': 'image/png',
+  '.json': 'application/json; charset=utf-8',
 };
 
 const SURFACE_TITLE: Record<string, string> = {
@@ -52,6 +78,7 @@ function htmlShell(surface: string, token: string, nonce: string): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${title}</title>
+<link rel="icon" href="/public/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/public/${surface}.css">
 <script nonce="${nonce}">window.__CTE__={token:${JSON.stringify(token)}};</script>
 <script type="module" src="/public/${surface}.js"></script>
@@ -80,27 +107,76 @@ export interface RunningServer {
   close(): Promise<void>;
 }
 
-export function startServer(opts: ServerOptions): Promise<RunningServer> {
+export interface StartServerOptions extends ServerOptions {
+  /** Composed config. Falls back to a file+env load when omitted. */
+  config?: TokenmancerConfig;
+  /** Where to look for a project-scoped `.tokenmancer.json`. */
+  cwd?: string;
+  /**
+   * The highest-precedence layer that produced `config`. Kept so a settings
+   * write can recompose the same stack: without it, saving would silently
+   * promote a value the CLI flags were overriding.
+   */
+  overrides?: PartialConfig;
+}
+
+export function startServer(opts: StartServerOptions): Promise<RunningServer> {
   const clients = new Set<http.ServerResponse>();
   const ring: string[] = [];
+  const alertRing: string[] = [];
   const heartbeats = new Map<http.ServerResponse, ReturnType<typeof setInterval>>();
   let source: TailController | InboxController | null = null;
   const logRateLimit = new RateLimiter(30, 10_000);
 
-  const redactOpts = { showPrompts: opts.showPrompts, salt: randomBytes(8).toString('hex') };
+  // When no composed config is handed in, the server flags still win over the
+  // config files — so `startServer(opts)` behaves the same for any caller.
+  const overrides: PartialConfig = opts.overrides ?? {
+    pricing: { defaultModel: opts.rateModel },
+    privacy: { showPrompts: opts.showPrompts, exposeAbsolutePaths: opts.exposePaths },
+  };
+  let config = opts.config ?? loadConfig({ cwd: opts.cwd, overrides }).config;
+
+  const redactOpts = {
+    showPrompts: config.privacy.showPrompts,
+    showToolQueries: config.privacy.showToolQueries,
+    showPaths: config.privacy.showPaths,
+    salt: randomBytes(8).toString('hex'),
+  };
+
+  // Workspace scoping is per-tail; until one is chosen, spend is recorded
+  // against the source that produced it.
+  let workspaceId = 'default';
+  const budget = new BudgetRunner({
+    config,
+    workspaceId,
+    onError: () => {
+      /* a ledger hiccup must never take the meter down */
+    },
+  });
+  budget.onAlert((a) => publishAlert(a));
 
   function frame(ev: MeterEvent): string {
     return `data: ${JSON.stringify(redactEvent(ev, redactOpts))}\n\n`;
   }
   function publish(ev: MeterEvent): void {
+    budget.observe(ev);
     const data = frame(ev);
     ring.push(data);
     if (ring.length > RING_MAX) ring.shift();
     for (const res of clients) res.write(data);
   }
+  function publishAlert(a: AlertEvent): void {
+    const data = `data: ${JSON.stringify(a)}\n\n`;
+    alertRing.push(data);
+    if (alertRing.length > ALERT_RING_MAX) alertRing.shift();
+    for (const res of clients) res.write(data);
+  }
   function broadcast(control: 'session'): void {
     const data = `data: ${JSON.stringify({ kind: 'control', control })}\n\n`;
-    if (control === 'session') ring.length = 0;
+    if (control === 'session') {
+      ring.length = 0;
+      budget.resetSession();
+    }
     for (const res of clients) res.write(data);
   }
 
@@ -115,7 +191,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
     }
   }
 
-  function startTail(file: string, fresh: boolean): void {
+  function startTail(file: string, fresh: boolean, repoRoots: string[] = []): void {
     stopSource();
     if (fresh) {
       ring.length = 0;
@@ -124,7 +200,8 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
     source = startLiveTail(file, {
       emit: publish,
       fromStart: opts.fromStart,
-      defaultModel: opts.rateModel,
+      defaultModel: config.pricing.defaultModel,
+      repoRoots,
     });
   }
 
@@ -135,14 +212,17 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
       fs.existsSync(abs) && fs.statSync(abs).isDirectory() ? path.join(abs, 'main.jsonl') : abs;
     startTail(file, false);
   } else if (opts.inbox) {
-    source = watchInbox(path.resolve(opts.inbox), { emit: publish, defaultModel: opts.rateModel });
+    source = watchInbox(path.resolve(opts.inbox), {
+      emit: publish,
+      defaultModel: config.pricing.defaultModel,
+    });
   }
 
   function resolveTailTarget(
     ws: string,
     sessionId: string | null,
     logFile: string | null,
-  ): { abs: string; workspace: string; log: string } | null {
+  ): { abs: string; workspace: string; log: string; repoRoots: string[] } | null {
     const r = resolveWorkspaceSessions(ws);
     if (!r || !r.sessions.length) return null;
     const s = sessionId ? r.sessions.find((x) => x.id === sessionId) : r.sessions[0];
@@ -151,7 +231,10 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
     if (!log || !isSafeLogFileName(log) || !s.logFiles.includes(log)) return null;
     const abs = path.join(s.logDir, log);
     if (!isContained(abs, r.ws.debugLogsDir)) return null;
-    return { abs, workspace: r.ws.folderName, log };
+    // The workspace folder is what makes a tool target repo-relative instead of
+    // a bare basename — without it the file-cost report cannot tell two
+    // index.ts apart.
+    return { abs, workspace: r.ws.folderName, log, repoRoots: r.ws.folder ? [r.ws.folder] : [] };
   }
 
   function sendJson(res: http.ServerResponse, code: number, body: unknown): void {
@@ -168,6 +251,25 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
     res.end(body);
   }
 
+  /** Read a request body with a hard cap, so a POST cannot exhaust memory. */
+  function readBody(req: http.IncomingMessage, done: (raw: string) => void): void {
+    const MAX = 64 * 1024;
+    let raw = '';
+    let over = false;
+    req.on('data', (c) => {
+      if (over) return;
+      raw += c;
+      if (raw.length > MAX) {
+        over = true;
+        raw = '';
+        req.destroy();
+      }
+    });
+    req.on('end', () => {
+      if (!over) done(raw);
+    });
+  }
+
   function servePage(res: http.ServerResponse, surface: string): void {
     const nonce = randomBytes(16).toString('base64');
     const html = htmlShell(surface, opts.token, nonce);
@@ -182,7 +284,9 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
   }
 
   function serveAsset(res: http.ServerResponse, name: string): void {
-    if (!/^[a-z0-9.\-]+\.(js|css|map)$/i.test(name)) {
+    // Allowlisted by extension, so a traversal or a stray file in dist/public
+    // can never be served. Every type here must also have a CONTENT_TYPE entry.
+    if (!/^[a-z0-9._\-]+\.(js|css|map|svg|png|json)$/i.test(name)) {
       sendText(res, 404, 'not found');
       return;
     }
@@ -215,6 +319,9 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
     });
     res.write('retry: 1000\n\n');
     for (const data of ring) res.write(data);
+    // Alerts replay after the steps and out of their own ring, so one fired
+    // before this client connected still reaches it.
+    for (const data of alertRing) res.write(data);
     clients.add(res);
     const hb = setInterval(() => res.write(': hb\n\n'), 15_000);
     heartbeats.set(res, hb);
@@ -282,11 +389,12 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
     if (method === 'GET' && urlPath === '/api/workspaces') {
       const list = discoverWorkspaces().map((w) => ({
         id: w.id,
+        provider: w.provider,
         folderName: w.folderName,
         modifiedStr: w.modifiedStr,
         sessionCount: w.sessionCount,
         channel: w.channel,
-        ...(opts.exposePaths ? { folder: w.folder } : {}),
+        ...(config.privacy.exposeAbsolutePaths ? { folder: w.folder } : {}),
       }));
       sendJson(res, 200, list);
       return;
@@ -319,9 +427,13 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
         sendText(res, 404, 'log not found');
         return;
       }
-      const events = loadLogFile(abs, { sessionId: session, defaultModel: opts.rateModel }).map(
-        (e) => redactEvent(e, redactOpts),
-      );
+      const folder = resolveWorkspaceSessions(ws)?.ws.folder;
+      const events = loadLogFile(abs, {
+        sessionId: session,
+        format: formatForWorkspace(ws),
+        defaultModel: config.pricing.defaultModel,
+        repoRoots: folder ? [folder] : [],
+      }).map((e) => redactEvent(e, redactOpts));
       sendJson(res, 200, events);
       return;
     }
@@ -337,7 +449,10 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
         sendText(res, 404, 'workspace/log not found');
         return;
       }
-      startTail(target.abs, true);
+      // Spend from here on belongs to this workspace.
+      workspaceId = ws;
+      budget.setWorkspace(ws);
+      startTail(target.abs, true, target.repoRoots);
       sendJson(res, 200, { ok: true, workspace: target.workspace, log: target.log });
       return;
     }
@@ -357,9 +472,72 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
       }
       const result = getWorkspaceAnalyticsWithInsights(r.ws, {
         timeWindowDays: Number.isFinite(days) ? days : 30,
-        defaultModel: opts.rateModel,
+        defaultModel: config.pricing.defaultModel,
       });
       sendJson(res, 200, result);
+      return;
+    }
+    if (method === 'GET' && urlPath === '/api/config') {
+      sendJson(res, 200, config);
+      return;
+    }
+    if (method === 'GET' && urlPath === '/api/spend') {
+      const snap = budget.snapshot();
+      const q = new URLSearchParams(rawUrl.slice(rawUrl.indexOf('?') + 1));
+      const period = q.get('period');
+      sendJson(res, 200, {
+        snapshot: snap,
+        rules: config.budgets.rules,
+        ...(period && period in snap.byPeriod
+          ? { period: snap.byPeriod[period as keyof typeof snap.byPeriod] }
+          : {}),
+      });
+      return;
+    }
+    if (method === 'POST' && (urlPath === '/api/budget' || urlPath === '/api/settings')) {
+      if (!logRateLimit.allow()) {
+        sendText(res, 429, 'rate limited');
+        return;
+      }
+      readBody(req, (raw) => {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(raw || '{}');
+        } catch {
+          sendText(res, 400, 'invalid JSON');
+          return;
+        }
+        // /api/budget is the narrow legacy shape ({rules}); /api/settings takes
+        // any config patch. Both funnel through the same validator the config
+        // files use, so neither can install a shape the evaluator would ignore.
+        const submitted: PartialConfig =
+          urlPath === '/api/budget'
+            ? { budgets: parsed as PartialConfig['budgets'] }
+            : (parsed as PartialConfig);
+        const { config: patch, problems } = validateConfig(submitted);
+        if (urlPath === '/api/budget' && !patch.budgets?.rules) {
+          sendJson(res, 400, { ok: false, problems });
+          return;
+        }
+        if (!Object.keys(patch).length) {
+          sendJson(res, 400, { ok: false, problems: problems.length ? problems : ['empty patch'] });
+          return;
+        }
+
+        // Persist before applying. A limit that evaporates on restart is not a
+        // limit, and the reload is what proves a higher-precedence layer (a
+        // project file, a TOKENMANCER_* var) has not quietly overridden it.
+        const saved = saveConfigPatch(patch, { cwd: opts.cwd, overrides });
+        config = saved.config;
+        budget.setConfig(config);
+        sendJson(res, 200, {
+          ok: true,
+          rules: config.budgets.rules,
+          config,
+          savedTo: saved.file,
+          problems: [...problems, ...saved.problems],
+        });
+      });
       return;
     }
 
@@ -400,14 +578,42 @@ function openBrowser(url: string): void {
 
 /** CLI entrypoint. */
 export async function main(): Promise<void> {
-  const opts = parseArgs(process.argv.slice(2));
-  const s = await startServer(opts);
+  const { server: opts, overrides } = parseArgs(process.argv.slice(2));
+
+  // Seed a config file on first run so there is something to edit, and bring an
+  // older one forward before reading it — a v1 file pins defaults it only ever
+  // copied, so without this a shipped default change cannot reach the user.
+  const created = ensureConfigFile();
+  const migrated = created ? null : migrateConfigFile();
+  const { config, sources, problems } = loadConfig({ overrides });
+
+  // Ranks ship next to the bundles rather than inside them; load them so
+  // server-side instruction measurement counts exactly (it estimates until then).
+  await initTokenizer(async () =>
+    JSON.parse(await fs.promises.readFile(path.join(PUBLIC_DIR, 'o200k_base.json'), 'utf8')),
+  ).catch((err) => {
+    console.warn('could not load o200k ranks, using estimates:', err?.message ?? err);
+  });
+
+  const s = await startServer({ ...opts, config, overrides });
   const link = `${s.url}?token=${s.token}`;
   console.log('GitHub Copilot Tokenmancer — local-first meter');
   console.log(`  ▶ open: ${link}`);
   console.log(
-    `  prompts: ${opts.showPrompts ? 'shown (--show-prompts)' : 'redacted by default'} · paths: ${opts.exposePaths ? 'exposed' : 'hidden'}`,
+    `  prompts: ${config.privacy.showPrompts ? 'shown (--redact-prompts to hide)' : 'redacted'} · tool commands: ${config.privacy.showToolQueries ? 'shown' : 'hidden (--show-tool-queries)'} · paths: ${config.privacy.exposeAbsolutePaths ? 'exposed' : 'hidden'}`,
   );
+  if (created) console.log(`  config: created ${created}`);
+  else if (migrated) console.log(`  config: migrated to v${CONFIG_VERSION} → ${migrated}`);
+  else console.log(`  config: ${sources.join(' → ')}`);
+
+  const budgeted = config.budgets.rules.filter((r) => r.enabled && r.limit > 0);
+  console.log(
+    budgeted.length
+      ? `  budgets: ${budgeted.map((r) => `${r.id} (${r.limit} ${r.metric}/${r.period})`).join(', ')}`
+      : '  budgets: none set',
+  );
+  for (const p of problems) console.warn(`  ! ${p}`);
+
   if (opts.open) openBrowser(link);
   const shutdown = async () => {
     await s.close();

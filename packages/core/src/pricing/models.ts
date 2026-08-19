@@ -54,8 +54,11 @@ export const CONTEXT_WINDOWS = {
   'gpt-5.5': 272_000,
 } satisfies Record<ModelId, number>;
 
-/** Credits in the non-rolling monthly seat pool. */
-export const POOL = 5000;
+/**
+ * Credits in the non-rolling monthly seat pool. A plan parameter, not a rate:
+ * override it with `pricing.poolCredits` when your seat differs.
+ */
+export const POOL = 3000;
 /** USD per AI-Credit. */
 export const CREDIT_USD = 0.01;
 

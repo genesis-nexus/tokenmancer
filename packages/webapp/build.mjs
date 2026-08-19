@@ -1,10 +1,17 @@
-import { mkdirSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { copyFileSync, mkdirSync, rmSync } from 'node:fs';
 import { build } from 'esbuild';
 
 const prod = process.argv.includes('--production');
 
 rmSync('dist', { recursive: true, force: true });
 mkdirSync('dist/public', { recursive: true });
+
+// o200k ranks as a served asset instead of a ~2.3 MB blob inlined into the
+// browser bundles — see core/tokenizer. Fetched by the surfaces at runtime.
+execFileSync('node', ['../../tools/emit-ranks.mjs', 'dist/public/o200k_base.json'], {
+  stdio: 'inherit',
+});
 
 // 1) Node server — single self-contained ESM file.
 await build({
@@ -41,5 +48,9 @@ await build({
   minify: true,
   logLevel: 'info',
 });
+
+// 3) Static brand assets. Copied rather than bundled: the favicon is fetched by
+//    the browser from a <link>, not imported by any module.
+copyFileSync('../ui/src/brand/favicon.svg', 'dist/public/favicon.svg');
 
 console.log('webapp build complete');

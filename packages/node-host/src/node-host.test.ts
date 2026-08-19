@@ -4,7 +4,13 @@ import * as path from 'node:path';
 import type { MeterEvent, StepEvent } from '@cte/core';
 import { newInstructionAccumulator } from '@cte/core';
 import { afterAll, describe, expect, it } from 'vitest';
-import { discoverSessionsIn, isContained, isSafeLogFileName, resolveLogPath } from './discover.js';
+import {
+  discoverSessionsIn,
+  isContained,
+  isSafeLogFileName,
+  readWorkspaceMeta,
+  resolveLogPath,
+} from './discover.js';
 import { watchInbox } from './inbox.js';
 import { measureInstructionFiles } from './instrument.js';
 import { loadLogFile } from './load.js';
@@ -39,6 +45,29 @@ describe('discoverSessionsIn', () => {
   });
 });
 
+describe('readWorkspaceMeta', () => {
+  function withWorkspaceJson(folder: string): string {
+    const dir = fs.mkdtempSync(path.join(tmp, 'wsmeta-'));
+    fs.writeFileSync(path.join(dir, 'workspace.json'), JSON.stringify({ folder }));
+    return dir;
+  }
+
+  it('decodes a macOS/Linux file:// URI as-is', () => {
+    const dir = withWorkspaceJson('file:///Users/dev/my-project');
+    const meta = readWorkspaceMeta(dir);
+    expect(meta.folder).toBe('/Users/dev/my-project');
+    expect(meta.folderName).toBe('my-project');
+  });
+
+  it('strips the leading slash VS Code puts before a Windows drive letter', () => {
+    // What VS Code actually writes for C:\Users\dev\my-project.
+    const dir = withWorkspaceJson('file:///c%3A/Users/dev/my-project');
+    const meta = readWorkspaceMeta(dir);
+    expect(meta.folder).toBe('c:/Users/dev/my-project');
+    expect(meta.folderName).toBe('my-project');
+  });
+});
+
 describe('loadLogFile (archive) routes through the funnel', () => {
   it('produces grouped, prompt-carrying steps', () => {
     const dir = makeDebugLogs();
@@ -49,6 +78,37 @@ describe('loadLogFile (archive) routes through the funnel', () => {
     expect(s[0]?.userPrompt).toBe('Do the thing');
     expect(s[0]?.sessionId).toBe('sess-x');
     expect(s[0]?.aic).toBeCloseTo(0.45, 6);
+  });
+
+  it('makes tool targets repo-relative when the workspace folder is known', () => {
+    const dir = path.join(tmp, 'roots', 'GitHub.copilot-chat', 'debug-logs');
+    fs.mkdirSync(dir, { recursive: true });
+    const repo = '/Users/dev/myproj';
+    fs.writeFileSync(
+      path.join(dir, 'main.jsonl'),
+      `${[
+        '{"type":"user_message","sid":"s1","spanId":"p1","ts":1000,"attrs":{"userRequest":"go"}}',
+        JSON.stringify({
+          type: 'tool_call',
+          sid: 's1',
+          spanId: 't1',
+          parentSpanId: 'p1',
+          ts: 1001,
+          name: 'read_file',
+          attrs: { args: JSON.stringify({ filePath: `${repo}/src/server.ts` }) },
+        }),
+      ].join('\n')}\n`,
+    );
+
+    // Without a root, the path degrades to a basename so nothing absolute leaks.
+    const bare = steps(loadLogFile(path.join(dir, 'main.jsonl'), {}));
+    expect(bare[0]?.targets).toEqual(['server.ts']);
+
+    // With the workspace folder, it becomes the repo-relative path the
+    // file-cost report needs to tell two server.ts files apart.
+    const rooted = steps(loadLogFile(path.join(dir, 'main.jsonl'), { repoRoots: [repo] }));
+    expect(rooted[0]?.targets).toEqual(['src/server.ts']);
+    expect(rooted[0]?.toolIntent).toBe('read');
   });
 });
 

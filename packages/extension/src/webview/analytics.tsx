@@ -5,4 +5,4 @@ import { render } from 'preact';
 
 const transport = new PostMessageTransport();
 const root = document.getElementById('app');
-if (root) render(<AnalyticsView transport={transport} />, root);
+if (root) render(<AnalyticsView transport={transport} navLinks={[]} />, root);

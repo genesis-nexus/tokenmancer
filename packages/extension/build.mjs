@@ -1,6 +1,14 @@
+import { execFileSync } from 'node:child_process';
 import { build } from 'esbuild';
 
 const prod = process.argv.includes('--production');
+
+// 0) o200k ranks as a standalone JSON asset, loaded at runtime by both the
+//    extension host (off disk) and the webviews (fetch). Keeping the ~2.3 MB
+//    blob out of the JS keeps the bundles scanner-clean — see core/tokenizer.
+execFileSync('node', ['../../tools/emit-ranks.mjs', 'dist/o200k_base.json'], {
+  stdio: 'inherit',
+});
 
 // 1) Extension host — Node/CommonJS, `vscode` provided by the runtime.
 await build({

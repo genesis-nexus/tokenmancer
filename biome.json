@@ -9,8 +9,7 @@
       "**/*.vsix",
       "fixtures/**",
       "proof/**",
-      "tools/**",
-      "legacy/**"
+      "tools/**"
     ]
   },
   "organizeImports": { "enabled": true },

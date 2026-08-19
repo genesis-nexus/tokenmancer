@@ -1,7 +1,16 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { type MeterEvent, createGroupingContext, extractObjects, processRecord } from '@cte/core';
+import {
+  type LogFormat,
+  type MeterEvent,
+  createClaudeContext,
+  createGroupingContext,
+  extractObjects,
+  processClaudeRecord,
+  processRecord,
+} from '@cte/core';
 import { measureInstructionFiles } from './instrument.js';
+import { formatForLogPath } from './sources/claude.js';
 
 export interface TailOptions {
   emit: (ev: MeterEvent) => void;
@@ -11,7 +20,11 @@ export interface TailOptions {
   preloadLines?: number;
   /** watchFile poll interval in ms (default 400). */
   pollInterval?: number;
+  /** Which transcript dialect the file is written in. Defaults to Copilot. */
+  format?: LogFormat;
   defaultModel?: string;
+  /** Workspace folders, so tool targets come out repo-relative. */
+  repoRoots?: string[];
   measureInstructions?: (s: Parameters<typeof measureInstructionFiles>[0]) => void;
   onError?: (e: unknown) => void;
 }
@@ -30,13 +43,21 @@ export function startLiveTail(file: string, opts: TailOptions): TailController {
   const abs = path.resolve(file);
   const pollInterval = opts.pollInterval ?? 400;
   const preloadLines = opts.preloadLines ?? 200;
-  const ctx = createGroupingContext();
   const measure = opts.measureInstructions ?? measureInstructionFiles;
-  const feed = (obj: unknown) =>
-    processRecord(obj, 'tail', ctx, opts.emit, {
+  const claude = (opts.format ?? formatForLogPath(abs)) === 'claude';
+  const base = createGroupingContext();
+  const claudeCtx = claude ? createClaudeContext(base) : null;
+  const feed = (obj: unknown) => {
+    if (claudeCtx) {
+      processClaudeRecord(obj, 'tail', claudeCtx, opts.emit, { repoRoots: opts.repoRoots });
+      return;
+    }
+    processRecord(obj, 'tail', base, opts.emit, {
       defaultModel: opts.defaultModel,
+      repoRoots: opts.repoRoots,
       measureInstructions: measure,
     });
+  };
 
   let pos = 0;
   let buf = '';

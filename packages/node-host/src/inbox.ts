@@ -7,6 +7,8 @@ export interface InboxOptions {
   emit: (ev: MeterEvent) => void;
   pollInterval?: number;
   defaultModel?: string;
+  /** Workspace folders, so tool targets come out repo-relative. */
+  repoRoots?: string[];
   measureInstructions?: (s: Parameters<typeof measureInstructionFiles>[0]) => void;
   onError?: (e: unknown) => void;
 }
@@ -37,6 +39,7 @@ export function watchInbox(file: string, opts: InboxOptions): InboxController {
       for (const obj of extractObjects(text)) {
         processRecord(obj, 'inbox', ctx, (ev) => batch.push(ev), {
           defaultModel: opts.defaultModel,
+          repoRoots: opts.repoRoots,
           measureInstructions: measure,
         });
       }

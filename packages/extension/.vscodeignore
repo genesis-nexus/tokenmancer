@@ -7,3 +7,7 @@ tsconfig.json
 vitest.config.*
 .vscode/**
 node_modules/**
+**/._*
+**/.DS_Store
+# vsce refuses to publish extensions containing user-provided SVGs.
+**/*.svg

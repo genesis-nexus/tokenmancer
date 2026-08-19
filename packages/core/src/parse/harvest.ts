@@ -89,8 +89,12 @@ export function harvest(obj: unknown, out: Harvested = {}): Harvested {
  * (plan → read → search → edit → verify) rather than an anonymous call list.
  */
 export function classifyStep(reqType?: string, toolName?: string): StepKind {
-  const s = `${reqType || ''} ${toolName || ''}`.toLowerCase();
-  if (/edit|apply|patch|insert|replace|createfile|writefile/.test(s)) return 'edit';
+  // Separators are stripped before matching. Real Copilot tools are snake_case
+  // (`create_file`, `read_file`), and without this `create_file` fell through
+  // the edit rule — which looks for `createfile` — and was caught by the read
+  // rule's `file\b`, so every file creation was reported as "Read file".
+  const s = `${reqType || ''} ${toolName || ''}`.toLowerCase().replace(/[-_]/g, '');
+  if (/edit|apply|patch|insert|replace|createfile|writefile|createdirectory/.test(s)) return 'edit';
   if (/grep|search|find|semantic|codebase|usages|ripgrep/.test(s)) return 'search';
   if (/read|open|view|file\b|readfile|cat/.test(s)) return 'read';
   if (/test|run|terminal|verify|build|lint|exec/.test(s)) return 'verify';

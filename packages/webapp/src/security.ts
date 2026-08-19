@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import { DEFAULT_CONFIG, type PartialConfig } from '@cte/core';
 
 export interface ServerOptions {
   port: number;
   host: string;
   token: string;
-  /** When false (default), prompt text is redacted before it leaves the process. */
+  /** When false (`--redact-prompts`), prompt text is redacted before it leaves the process. */
   showPrompts: boolean;
   /** When false (default), absolute project paths are withheld from /api/workspaces. */
   exposePaths: boolean;
@@ -13,24 +14,41 @@ export interface ServerOptions {
   fromStart: boolean;
   rateModel: string;
   open: boolean;
+  /** Explicit config file, bypassing the usual search. */
+  configFile: string | null;
+}
+
+/**
+ * Flags split in two. Genuinely server-only options stay on ServerOptions;
+ * anything that also exists as a config key becomes the highest-precedence
+ * config layer instead of a second source of truth.
+ */
+export interface ParsedArgs {
+  server: ServerOptions;
+  overrides: PartialConfig;
 }
 
 const DEFAULT_INBOX = 'copilot-meter-inbox.jsonl';
 
 /** Parse CLI args into hardened server options. Unknown/invalid input fails safe. */
-export function parseArgs(argv: string[]): ServerOptions {
+export function parseArgs(argv: string[]): ParsedArgs {
   const opt: ServerOptions = {
     port: 7878,
     host: '127.0.0.1',
     token: randomUUID(),
-    showPrompts: false,
+    showPrompts: DEFAULT_CONFIG.privacy.showPrompts,
     exposePaths: false,
     tail: null,
     inbox: null,
     fromStart: false,
-    rateModel: 'claude-sonnet-4.6',
+    // No longer a literal duplicated with the extension — one default, in core.
+    rateModel: DEFAULT_CONFIG.pricing.defaultModel,
     open: false,
+    configFile: null,
   };
+  const overrides: PartialConfig = {};
+  let monthlyBudget: number | null = null;
+
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--port') {
@@ -51,19 +69,61 @@ export function parseArgs(argv: string[]): ServerOptions {
       opt.fromStart = true;
     } else if (a === '--rate-model') {
       opt.rateModel = argv[++i] ?? opt.rateModel;
+      overrides.pricing = { ...overrides.pricing, defaultModel: opt.rateModel };
     } else if (a === '--show-prompts') {
+      // Now the default. Kept so existing scripts and docs don't start erroring.
       opt.showPrompts = true;
+      overrides.privacy = { ...overrides.privacy, showPrompts: true };
+    } else if (a === '--redact-prompts') {
+      opt.showPrompts = false;
+      overrides.privacy = { ...overrides.privacy, showPrompts: false };
+    } else if (a === '--show-tool-queries') {
+      overrides.privacy = { ...overrides.privacy, showToolQueries: true };
     } else if (a === '--expose-paths') {
       opt.exposePaths = true;
+      overrides.privacy = { ...overrides.privacy, exposeAbsolutePaths: true };
+    } else if (a === '--hide-paths') {
+      overrides.privacy = { ...overrides.privacy, showPaths: false };
     } else if (a === '--open') {
       opt.open = true;
     } else if (a === '--token') {
       opt.token = argv[++i] ?? opt.token;
+    } else if (a === '--config') {
+      opt.configFile = argv[++i] ?? null;
+    } else if (a === '--no-alerts') {
+      overrides.alerts = { ...overrides.alerts, enabled: false };
+    } else if (a === '--budget-month') {
+      const n = Number(argv[++i] ?? '');
+      if (!Number.isFinite(n) || n <= 0) {
+        throw new Error(`--budget-month must be a positive number of credits, got: ${argv[i]}`);
+      }
+      monthlyBudget = n;
     }
   }
+
+  // A month budget from the CLI is expressed as a rule, so it flows through the
+  // same evaluator as a configured one rather than being a special case.
+  if (monthlyBudget != null) {
+    overrides.budgets = {
+      rules: [
+        ...DEFAULT_CONFIG.budgets.rules,
+        {
+          id: 'cli-month',
+          enabled: true,
+          period: 'month',
+          metric: 'credits',
+          limit: monthlyBudget,
+          thresholds: [0.5, 0.8, 1],
+          severity: 'warn',
+          scope: 'global',
+        },
+      ],
+    };
+  }
+
   // Guaranteed-to-work default: an inbox file, if no live source was chosen.
   if (!opt.tail && !opt.inbox) opt.inbox = DEFAULT_INBOX;
-  return opt;
+  return { server: opt, overrides };
 }
 
 /** Accept only loopback Host headers (blocks DNS-rebinding). */

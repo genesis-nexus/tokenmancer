@@ -3,7 +3,7 @@
   "displayName": "Tokenmancer",
   "version": "0.1.0",
   "private": true,
-  "description": "See what every AI coding prompt really costs — a live AI-Credit meter, session replay, and a what-if simulator, right inside your editor.",
+  "description": "See what every AI coding prompt really costs \u2014 a live AI-Credit meter, session replay, and a what-if simulator, right inside your editor.",
   "license": "MIT",
   "publisher": "GenesisNexus",
   "repository": {
@@ -19,17 +19,17 @@
     "vscode": "^1.90.0"
   },
   "categories": ["Visualization", "Other"],
-  "keywords": ["ai", "tokens", "ai-credits", "cost", "usage", "copilot"],
+  "keywords": ["ai", "tokens", "ai-credits", "cost", "usage"],
   "icon": "media/icon.png",
   "main": "./dist/extension.js",
-  "activationEvents": [],
+  "activationEvents": ["onStartupFinished"],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
         {
           "id": "tokenmancer",
           "title": "Tokenmancer",
-          "icon": "media/icon.svg"
+          "icon": "media/icon-activity.png"
         }
       ]
     },
@@ -65,7 +65,17 @@
       },
       {
         "command": "tokenmancer.pickWorkspace",
-        "title": "Tail a Workspace’s Log…",
+        "title": "Tail a Workspace\u2019s Log\u2026",
+        "category": "Tokenmancer"
+      },
+      {
+        "command": "tokenmancer.showSpend",
+        "title": "Show Month-to-date Spend",
+        "category": "Tokenmancer"
+      },
+      {
+        "command": "tokenmancer.setBudget",
+        "title": "Set Monthly Credit Budget\u2026",
         "category": "Tokenmancer"
       }
     ],
@@ -83,8 +93,68 @@
       "properties": {
         "tokenmancer.showPrompts": {
           "type": "boolean",
+          "default": true,
+          "description": "Show prompt text in the meter, session replay, and analytics.",
+          "deprecationMessage": "Renamed to tokenmancer.privacy.showPrompts. Your existing value is still honoured."
+        },
+        "tokenmancer.privacy.showPrompts": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show your prompt text in the meter, session replay, and analytics. On by default \u2014 the prompt is how you tell one agent loop from another, and nothing leaves your machine. Turn it off for screenshares, and each loop falls back to an opaque `\u2039redacted a1b2c3\u203a` tag."
+        },
+        "tokenmancer.privacy.showToolQueries": {
+          "type": "boolean",
           "default": false,
-          "description": "Show prompt text in the meter, session replay, and analytics. Off by default for privacy — token counts and costs are always shown either way."
+          "markdownDescription": "Show the shell commands and search strings the agent ran. Off by default: a command line is where a token or connection string tends to get pasted. File targets and costs are reported either way."
+        },
+        "tokenmancer.budgets.monthlyCredits": {
+          "type": ["number", "null"],
+          "default": null,
+          "minimum": 0,
+          "markdownDescription": "Credits you intend to spend per month. Alerts fire at 50%, 80% and 100%. Leave empty for no monthly budget."
+        },
+        "tokenmancer.pricing.defaultModel": {
+          "type": "string",
+          "default": "claude-sonnet-4.6",
+          "description": "Model used to price a call when the debug log does not name one."
+        },
+        "tokenmancer.pricing.poolCredits": {
+          "type": "number",
+          "default": 3000,
+          "minimum": 1,
+          "description": "Credits in your non-rolling monthly seat pool."
+        },
+        "tokenmancer.privacy.showPaths": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Report which repo-relative files the agent read or edited. Contents are never reported, and absolute paths are always withheld."
+        },
+        "tokenmancer.alerts.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Fire budget alerts. Turning this off disables the whole alerting path."
+        },
+        "tokenmancer.alerts.cooldownMinutes": {
+          "type": "number",
+          "default": 15,
+          "minimum": 0,
+          "description": "Minimum gap between alerts for the same budget period. A breach of the limit itself always gets through."
+        },
+        "tokenmancer.alerts.maxPerHour": {
+          "type": "number",
+          "default": 6,
+          "minimum": 0,
+          "description": "Hard cap on alerts per hour. Anything beyond it is counted, not shown."
+        },
+        "tokenmancer.ui.defaultDetail": {
+          "type": "string",
+          "enum": ["simple", "detailed"],
+          "enumDescriptions": [
+            "Plain-language summary with a Learn card; the step tables and dense metrics are one click away.",
+            "Every step, every metric, the full breakdown."
+          ],
+          "default": "simple",
+          "description": "How much detail the meter and analytics open with. The in-view toggle overrides this and is remembered per machine."
         }
       }
     }
@@ -100,9 +170,14 @@
     "preact": "^10.25.4"
   },
   "scripts": {
+    "vscode:prepublish": "node build.mjs --production",
     "typecheck": "tsc --noEmit",
     "build": "node build.mjs",
     "build:prod": "node build.mjs --production",
     "package": "node build.mjs --production && vsce package --no-dependencies -o dist/tokenmancer.vsix"
+  },
+  "galleryBanner": {
+    "color": "#0A0D13",
+    "theme": "dark"
   }
 }

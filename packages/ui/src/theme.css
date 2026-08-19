@@ -24,6 +24,19 @@
   --crit: #d03b3b;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Brand accents, sampled from assets/brand/tokenmancer-mark.png. Scoped to
+     the logo on purpose: the mark's green is a brand colour, not a UI one, and
+     letting it into the meter would compete with the cost bars, which carry
+     meaning. */
+  --brand-eye: #9eff3d;
+  --brand-mouth: #5b922a;
+
+  /* Shell geometry, so the static header lines up with whatever content width
+     the surface below it uses. Surfaces that are wider than the meter (the
+     analytics dashboard) override these in their own stylesheet. */
+  --shell-max: 980px;
+  --shell-pad: 20px;
 }
 
 @media (prefers-color-scheme: light) {
@@ -42,6 +55,9 @@
     --write: #008300;
     --fresh: #e87ba4;
     --out: #eda100;
+    /* From assets/brand/tokenmancer-light.png — the mark's own light variant. */
+    --brand-eye: #4f8f0a;
+    --brand-mouth: #98b96b;
   }
 }
 
@@ -60,6 +76,9 @@
   --write: #008300;
   --fresh: #e87ba4;
   --out: #eda100;
+  /* From assets/brand/tokenmancer-light.png — the mark's own light variant. */
+  --brand-eye: #4f8f0a;
+  --brand-mouth: #98b96b;
 }
 
 * {
@@ -76,37 +95,151 @@ body {
   transition: background-color .15s ease, color .15s ease;
 }
 .wrap {
-  max-width: 980px;
+  max-width: var(--shell-max);
   margin: 0 auto;
-  padding: 0 20px 72px;
+  padding: 0 var(--shell-pad) 72px;
 }
 
-/* masthead */
-.mast {
+/* ── Brand mark ──────────────────────────────────────────────────────────
+   The hood rides on currentColor so the mark inverts with the theme from one
+   asset; only the accents are tokenised. */
+.tmLogo {
+  flex: none;
+  display: block;
+}
+.tmLogo-eye {
+  fill: var(--brand-eye);
+}
+.tmLogo-mouth {
+  fill: var(--brand-mouth);
+}
+.tmLogo-dot {
+  fill: var(--brand-eye);
+  stroke: var(--brand-eye);
+}
+
+/* ── App bar ─────────────────────────────────────────────────────────────
+   The one piece of chrome every surface shares: brand, the four destinations,
+   and the controls that act on the whole app. It is deliberately the only
+   place navigation lives — view-scoped controls go in .pageHead below, so the
+   two never compete for the same corner of the screen.
+
+   Sticky, because the reason to switch views usually arrives halfway down a
+   long feed. */
+.appbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.appbarInner {
+  display: flex;
+  align-items: center;
+  gap: 8px 20px;
+  max-width: var(--shell-max);
+  margin: 0 auto;
+  padding: 0 var(--shell-pad);
+  min-height: 50px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  color: var(--ink);
+  text-decoration: none;
+}
+.brand .tmLogo {
+  color: var(--ink);
+}
+.brandName {
+  font-size: 13.5px;
+  font-weight: 650;
+  letter-spacing: -.01em;
+}
+.brand:focus-visible {
+  outline: 2px solid var(--read);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* Scrolls rather than wraps on narrow viewports: a tab row that reflows moves
+   the destination out from under the pointer between visits. */
+.mainNav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  margin-right: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.mainNav::-webkit-scrollbar {
+  display: none;
+}
+a.navTab {
+  padding: 6px 10px;
+  border-radius: 7px;
+  color: var(--muted);
+  font-size: 12.5px;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background .15s ease, color .15s ease;
+}
+a.navTab:hover {
+  color: var(--ink);
+  background: var(--surface2);
+}
+a.navTab.on {
+  color: var(--ink);
+  background: var(--surface2);
+  font-weight: 600;
+}
+a.navTab:focus-visible {
+  outline: 2px solid var(--read);
+  outline-offset: -2px;
+}
+.appbarActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  flex: none;
+}
+
+/* ── Page head ───────────────────────────────────────────────────────────
+   What this view is, and only the controls that change this view. */
+.pageHead {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 16px;
-  padding: 26px 0 14px;
+  gap: 12px 20px;
+  padding: 22px 0 14px;
   flex-wrap: wrap;
 }
-.mast h1 {
+.pageTitle {
+  min-width: 0;
+}
+.pageHead h1 {
   font-size: 17px;
   font-weight: 600;
   color: var(--ink);
   margin: 0;
   letter-spacing: -.01em;
 }
-.mast .sub {
+.pageHead .sub {
   margin: 2px 0 0;
   color: var(--muted);
   font-size: 12.5px;
+  max-width: 70ch;
 }
-.mastRight {
+.pageActions {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding-top: 3px;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 2px;
 }
 .conn {
   display: inline-flex;
@@ -127,15 +260,24 @@ body {
 .dot.down {
   background: var(--crit);
 }
-a.navlink {
-  color: var(--ink2);
-  font-size: 12px;
-  text-decoration: none;
-  border-bottom: 1px solid var(--line);
-}
-a.navlink:hover {
-  color: var(--ink);
-  border-color: var(--ink2);
+/* Below this width the three groups no longer fit on one line. The tab row
+   drops to its own full-width line rather than shrinking, so brand and global
+   actions keep their corners. */
+@media (max-width: 720px) {
+  .appbarInner {
+    flex-wrap: wrap;
+    padding-top: 9px;
+    padding-bottom: 9px;
+  }
+  .mainNav {
+    order: 3;
+    width: 100%;
+    margin-right: 0;
+    margin-left: -6px;
+  }
+  .pageHead {
+    padding-top: 18px;
+  }
 }
 
 .themeToggle {
@@ -159,6 +301,182 @@ a.navlink:hover {
 .themeToggle:focus-visible {
   outline: none;
   border-color: var(--ink2);
+}
+
+/* Square icon button, matching the theme toggle's footprint so the masthead
+   controls sit on one rhythm. */
+.iconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink2);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  flex: none;
+}
+.iconBtn:hover {
+  border-color: var(--muted);
+  color: var(--ink);
+}
+.iconBtn:focus-visible {
+  outline: none;
+  border-color: var(--ink2);
+}
+
+/* ── Settings dialog ─────────────────────────────────────────────────────
+   A native <dialog>, so focus trapping, Escape and inertness come from the
+   platform rather than from hand-rolled key handling. */
+.settingsDlg {
+  width: min(520px, calc(100vw - 32px));
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink2);
+  box-shadow: 0 18px 48px rgb(0 0 0 / 0.28);
+}
+.settingsDlg::backdrop {
+  background: rgb(0 0 0 / 0.45);
+}
+.settingsForm {
+  display: flex;
+  flex-direction: column;
+  max-height: min(80vh, 680px);
+}
+.settingsHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.settingsHead h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.settingsX {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px;
+  cursor: pointer;
+}
+.settingsX:hover {
+  color: var(--ink);
+}
+.settingsBody {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px;
+  overflow-y: auto;
+}
+.setRow {
+  display: grid;
+  gap: 4px;
+}
+.setLbl {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.setHint {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.setInput {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.setInput input[type="number"] {
+  width: 120px;
+  appearance: none;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  padding: 7px 10px;
+}
+.setInput input[type="number"]:focus {
+  outline: none;
+  border-color: var(--ink2);
+}
+.setUnit {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+/* The money equivalent. Credits are the unit the log speaks; dollars are the
+   unit the reader thinks in, so both are on screen rather than one or a mode. */
+.setEq {
+  font-size: 11.5px;
+  color: var(--ink2);
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+}
+.setWarn {
+  font-size: 11.5px;
+  color: var(--out);
+}
+.setRow-check {
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 10px;
+}
+.setRow-check input {
+  margin-top: 2px;
+}
+.setRow-check span {
+  display: grid;
+  gap: 3px;
+}
+.settingsFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--line);
+}
+.settingsBtns {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+.setStatus {
+  font-size: 11.5px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.setStatus-idle {
+  color: var(--muted);
+}
+.setStatus-ok {
+  color: var(--good);
+}
+.setStatus-warn {
+  color: var(--out);
+}
+.setStatus-err {
+  color: var(--crit);
 }
 
 /* workspace bar */
@@ -982,4 +1300,355 @@ input[type="range"] {
 }
 .simToggle input {
   accent-color: var(--good);
+}
+
+/* budget alerts — stacked banners, severity-tinted, dismissible */
+.alert-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+.alert {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.alert-info {
+  border-color: color-mix(in srgb, var(--read) 45%, var(--line));
+  background: color-mix(in srgb, var(--read) 10%, var(--surface));
+}
+.alert-warn {
+  border-color: color-mix(in srgb, var(--out) 45%, var(--line));
+  background: color-mix(in srgb, var(--out) 10%, var(--surface));
+}
+.alert-critical {
+  border-color: color-mix(in srgb, var(--crit) 50%, var(--line));
+  background: color-mix(in srgb, var(--crit) 12%, var(--surface));
+}
+.alert-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.alert-body strong {
+  font-size: 13px;
+  color: var(--ink);
+}
+.alert-body span {
+  font-size: 12px;
+  color: var(--ink2);
+  line-height: 1.5;
+}
+.alert-act {
+  flex: none;
+}
+.alert-x {
+  flex: none;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.alert-x:hover {
+  color: var(--ink);
+  background: var(--surface2);
+}
+
+/* month-to-date budget gauge, sits in the readout row */
+.budgetbar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 150px;
+}
+.budgetbar .lbl {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.budgetbar .val {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.budgetbar .sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+.budgetbar-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.budgetbar-track {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--track);
+  overflow: hidden;
+}
+.budgetbar-fill {
+  height: 100%;
+  background: var(--good);
+  transition: width 0.3s ease;
+}
+/* How far through the month we are. Fill short of this mark is under pace;
+   fill past it is outrunning the calendar. */
+.budgetbar-today {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--ink);
+  opacity: 0.45;
+}
+.budgetbar-warn .budgetbar-fill {
+  background: var(--out);
+}
+.budgetbar-crit .budgetbar-fill {
+  background: var(--crit);
+}
+
+/* ── Level-of-detail toggle ──────────────────────────────────────────────
+   Segmented control. Unlike the theme toggle, the current mode is not
+   self-evident from the page, so both options stay labelled. */
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+/* Provider filter — the same segmented control as the detail toggle, because
+   it does the same job: name two states neither of which is obvious from the
+   screen. Sized down a touch; it sits inside the workspace bar, not a masthead. */
+.providerFilter {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface2);
+  flex: 0 0 auto;
+}
+.providerOpt {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 10.5px;
+  line-height: 1;
+  padding: 5px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.providerOpt:hover {
+  color: var(--ink);
+}
+.providerOpt.on {
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+}
+.providerOpt:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.skillToggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface2);
+}
+.skillOpt {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  padding: 5px 11px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.skillOpt:hover {
+  color: var(--ink);
+}
+.skillOpt.on {
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+}
+.skillOpt:focus-visible {
+  outline: 2px solid var(--read);
+  outline-offset: 1px;
+}
+
+/* ── Learn card ─────────────────────────────────────────────────────────
+   One idea, then a door into the detailed view. */
+.learnCard {
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--read) 35%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--read) 7%, var(--surface));
+}
+.learnHead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.learnKicker {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--read);
+  font-weight: 700;
+}
+.learnHead h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.learnBody {
+  margin: 8px 0 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink2);
+  max-width: 68ch;
+}
+.learnFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.learnDots {
+  display: flex;
+  gap: 6px;
+}
+.learnDot {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--track);
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.learnDot:hover {
+  transform: scale(1.25);
+}
+.learnDot.on {
+  background: var(--read);
+}
+.learnMore,
+.moreDetail {
+  border: 0;
+  background: none;
+  color: var(--read);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 2px;
+  border-radius: 4px;
+}
+.learnMore:hover,
+.moreDetail:hover {
+  text-decoration: underline;
+}
+.learnMore:focus-visible,
+.moreDetail:focus-visible,
+.loopExpand:focus-visible {
+  outline: 2px solid var(--read);
+  outline-offset: 2px;
+}
+
+/* Stub left where a dense section was hidden. */
+.moreDetail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  text-align: left;
+  color: var(--ink2);
+  font-weight: 500;
+}
+.moreDetail:hover {
+  border-color: var(--read);
+  color: var(--ink);
+  text-decoration: none;
+}
+.moreDetailArrow {
+  color: var(--read);
+  font-weight: 700;
+  flex: none;
+}
+
+/* ── Simple-view loop card ──────────────────────────────────────────────── */
+.loopPlain {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink2);
+}
+.loopExpand {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  padding: 9px 14px;
+  cursor: pointer;
+}
+.loopExpand:hover {
+  color: var(--ink);
+  background: var(--surface2);
+}
+
+/* The simple readout runs to three stats, so let them breathe. */
+.readout-simple .stat .val {
+  font-variant-numeric: tabular-nums;
 }

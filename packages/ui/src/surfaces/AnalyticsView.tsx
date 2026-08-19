@@ -5,9 +5,10 @@
 import type { JSX } from 'preact';
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import { AnalyticsDashboard } from '../components/Analytics/AnalyticsDashboard.js';
+import { AppNav, type NavLink } from '../components/AppNav.js';
+import { ProviderFilter } from '../components/ProviderFilter.js';
 import { SettingsBanner } from '../components/SettingsBanner.js';
 import { SetupGuide } from '../components/SetupGuide.js';
-import { ThemeToggle } from '../components/ThemeToggle.js';
 import {
   resetAnalytics,
   selectedTimeWindow,
@@ -15,15 +16,30 @@ import {
   setAnalyticsError,
   setAnalyticsLoading,
 } from '../state/analytics-store.js';
+import { setConfig } from '../state/budget-store.js';
+import {
+  PROVIDER_LABEL,
+  filterWorkspaces,
+  matchesProvider,
+  providerFilter,
+  workspaceLabel,
+} from '../state/provider-store.js';
+import { applyConfigDefault } from '../state/skill-store.js';
 import type { MeterTransport, SettingStatus, WorkspaceSummary } from '../transport.js';
 
 export interface AnalyticsViewProps {
   transport: MeterTransport;
   /** Pre-selected workspace ID (for extension use). */
   defaultWorkspaceId?: string;
+  /** Header destinations; `[]` inside the VS Code webview. */
+  navLinks?: readonly NavLink[];
 }
 
-export function AnalyticsView({ transport, defaultWorkspaceId }: AnalyticsViewProps): JSX.Element {
+export function AnalyticsView({
+  transport,
+  defaultWorkspaceId,
+  navLinks,
+}: AnalyticsViewProps): JSX.Element {
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
   const [selectedWs, setSelectedWs] = useState<string>(defaultWorkspaceId ?? '');
   const [loading, setLoading] = useState(true);
@@ -35,8 +51,8 @@ export function AnalyticsView({ transport, defaultWorkspaceId }: AnalyticsViewPr
       .then((ws) => {
         setWorkspaces(ws);
         setLoading(false);
-        // Auto-select first workspace if none selected
-        const first = ws[0];
+        // Auto-select the newest workspace the current filter actually shows.
+        const first = filterWorkspaces(ws, providerFilter.peek())[0];
         if (first) {
           setSelectedWs((prev) => prev || first.id);
         }
@@ -44,6 +60,24 @@ export function AnalyticsView({ transport, defaultWorkspaceId }: AnalyticsViewPr
       .catch(() => {
         setLoading(false);
       });
+  }, [transport]);
+
+  // Analytics has no live stream, so config is fetched once rather than polled.
+  // It is what the settings dialog and the detail default both read.
+  useEffect(() => {
+    if (!transport.getConfig) return;
+    let alive = true;
+    transport
+      .getConfig()
+      .then((c) => {
+        if (!alive) return;
+        setConfig(c);
+        applyConfigDefault(c.ui?.defaultDetail);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
   }, [transport]);
 
   const [settings, setSettings] = useState<SettingStatus[] | null>(null);
@@ -100,67 +134,97 @@ export function AnalyticsView({ transport, defaultWorkspaceId }: AnalyticsViewPr
     }
   };
 
+  const filter = providerFilter.value;
+  const shown = filterWorkspaces(workspaces, filter);
+
+  // Narrowing the filter must move the dashboard, not leave it showing numbers
+  // for a workspace the picker no longer lists. Fall through to the newest
+  // remaining one so the surface is never blank when there is data to show.
+  useEffect(() => {
+    if (!workspaces.length) return;
+    const current = workspaces.find((w) => w.id === selectedWs);
+    if (current && matchesProvider(current, filter)) return;
+    setSelectedWs(shown[0]?.id ?? '');
+  }, [filter, workspaces, selectedWs, shown[0]?.id]);
+
   const selectedWorkspace = workspaces.find((w) => w.id === selectedWs);
 
   return (
-    <div class="analytics-view">
-      {/* Header Bar */}
-      <header class="analytics-view-header">
-        <div class="analytics-view-title">
-          <h1>Workspace Analytics</h1>
-          <span class="analytics-view-subtitle">Understand your Copilot usage patterns</span>
-        </div>
-        <div class="workspace-selector">
-          <label for="ws-select">Workspace:</label>
-          {loading ? (
-            <span class="loading-text">Loading...</span>
-          ) : (
-            <select
-              id="ws-select"
-              value={selectedWs}
-              onChange={handleWorkspaceChange}
-              disabled={workspaces.length === 0}
-            >
-              {workspaces.length === 0 && <option value="">No workspaces found</option>}
-              {workspaces.map((ws) => (
-                <option key={ws.id} value={ws.id}>
-                  {ws.folderName} ({ws.channel} · {ws.sessionCount} sessions)
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
-        <ThemeToggle />
-      </header>
+    <>
+      <AppNav links={navLinks} current="/analytics" transport={transport} />
 
-      {settings || !transport.checkSettings ? (
-        <div class="analytics-view-notice">
-          {settings ? (
-            <SettingsBanner
-              settings={settings}
-              onOpenSetting={(key) => transport.openSetting?.(key)}
-            />
-          ) : (
-            <SetupGuide />
-          )}
-        </div>
-      ) : null}
-
-      {/* Main Content */}
-      <main class="analytics-view-main">
-        {!transport.getWorkspaceAnalytics ? (
-          <div class="analytics-unsupported">
-            <div class="unsupported-icon">⚠</div>
-            <div class="unsupported-text">Analytics are not supported in this transport mode.</div>
+      <div class="analytics-view">
+        {/* View-scoped head: the title, and the two pickers that decide which
+            numbers the dashboard below is showing. */}
+        <div class="analytics-view-head">
+          <div class="pageHead">
+            <div class="pageTitle">
+              <h1>Workspace Analytics</h1>
+              <p class="sub">
+                Understand your{' '}
+                {selectedWorkspace ? PROVIDER_LABEL[selectedWorkspace.provider] : 'agent'} usage
+                patterns
+              </p>
+            </div>
+            <div class="pageActions workspace-selector">
+              <ProviderFilter workspaces={workspaces} />
+              <label for="ws-select">Workspace:</label>
+              {loading ? (
+                <span class="loading-text">Loading...</span>
+              ) : (
+                <select
+                  id="ws-select"
+                  value={selectedWs}
+                  onChange={handleWorkspaceChange}
+                  disabled={shown.length === 0}
+                >
+                  {shown.length === 0 && (
+                    <option value="">
+                      {workspaces.length ? 'No workspaces for this agent' : 'No workspaces found'}
+                    </option>
+                  )}
+                  {shown.map((ws) => (
+                    <option key={ws.id} value={ws.id}>
+                      {workspaceLabel(ws)}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
           </div>
-        ) : (
-          <AnalyticsDashboard
-            workspaceName={selectedWorkspace?.folderName ?? 'Unknown'}
-            onTimeWindowChange={handleTimeWindowChange}
-            onRefresh={handleRefresh}
-          />
-        )}
-      </main>
-    </div>
+        </div>
+
+        {settings || !transport.checkSettings ? (
+          <div class="analytics-view-notice">
+            {settings ? (
+              <SettingsBanner
+                settings={settings}
+                onOpenSetting={(key) => transport.openSetting?.(key)}
+              />
+            ) : (
+              <SetupGuide />
+            )}
+          </div>
+        ) : null}
+
+        {/* Main Content */}
+        <main class="analytics-view-main">
+          {!transport.getWorkspaceAnalytics ? (
+            <div class="analytics-unsupported">
+              <div class="unsupported-icon">⚠</div>
+              <div class="unsupported-text">
+                Analytics are not supported in this transport mode.
+              </div>
+            </div>
+          ) : (
+            <AnalyticsDashboard
+              workspaceName={selectedWorkspace?.folderName ?? 'Unknown'}
+              onTimeWindowChange={handleTimeWindowChange}
+              onRefresh={handleRefresh}
+            />
+          )}
+        </main>
+      </div>
+    </>
   );
 }

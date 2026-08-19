@@ -15,6 +15,9 @@ import {
   toolUsageRatePct,
   workspaceAnalytics,
 } from '../../state/analytics-store.js';
+import { skillMode } from '../../state/skill-store.js';
+import { ANALYTICS_LESSONS, LearnCard, MoreDetail } from '../LearnCard.js';
+import { SkillToggle } from '../SkillToggle.js';
 import { InsightsList } from './InsightsList.js';
 import { ActivityByHour, ContextPressurePanel, ModelSwitchPanel } from './InteractionPanels.js';
 import { MetricCard, type MetricDelta, MetricGrid } from './MetricCard.js';
@@ -80,6 +83,7 @@ export function AnalyticsDashboard({
   const trend = analytics.dailyTrend;
   const rangeLabel = timeWindow >= 365 ? 'All time' : `Past ${timeWindow} days`;
   const thresholdPct = (analytics.contextThreshold * 100).toFixed(0);
+  const novice = skillMode.value === 'novice';
 
   return (
     <div class="analytics-dashboard">
@@ -90,6 +94,7 @@ export function AnalyticsDashboard({
           <span class="analytics-subtitle">Workspace analytics · {rangeLabel.toLowerCase()}</span>
         </div>
         <div class="analytics-controls">
+          <SkillToggle />
           <select
             class="time-select"
             value={timeWindow}
@@ -113,193 +118,243 @@ export function AnalyticsDashboard({
         </div>
       </div>
 
-      {/* Key metrics */}
+      {/* Key metrics. The simple view swaps billing vocabulary for money and
+          plain nouns, and drops the token card entirely — a raw token count is
+          not a number anyone can act on until they know what a token costs. */}
       <section class="analytics-section">
         <div class="section-head">
-          <h3>Key metrics</h3>
-          <span class="section-meta">Totals across {rangeLabel.toLowerCase()}</span>
+          <h3>{novice ? 'Your numbers' : 'Key metrics'}</h3>
+          <span class="section-meta">
+            {novice
+              ? `Over the ${rangeLabel.toLowerCase()}`
+              : `Totals across ${rangeLabel.toLowerCase()}`}
+          </span>
         </div>
         <MetricGrid>
           <MetricCard
-            label="Sessions"
+            label={novice ? 'Spent' : 'Credits spent'}
+            value={novice ? `$${costUsd.toFixed(2)}` : fmtCr(analytics.totalAic)}
+            unit={novice ? undefined : 'cr'}
+            icon="◈"
+            status={costUsd > 10 ? 'warning' : 'good'}
+            delta={deltaFor(trend, 'totalAic', 'sum', false)}
+            comparison={
+              novice ? `${fmtCr(analytics.totalAic)} credits` : `$${costUsd.toFixed(2)} USD`
+            }
+          />
+          <MetricCard
+            label={novice ? 'Chats' : 'Sessions'}
             value={analytics.totalSessions}
             icon="◷"
             status="neutral"
             delta={deltaFor(trend, 'sessionCount', 'sum')}
           />
           <MetricCard
-            label="Credits spent"
-            value={fmtCr(analytics.totalAic)}
-            unit="cr"
-            icon="◈"
-            status={costUsd > 10 ? 'warning' : 'good'}
-            delta={deltaFor(trend, 'totalAic', 'sum', false)}
-            comparison={`$${costUsd.toFixed(2)} USD`}
-          />
-          <MetricCard
-            label="Prompt loops"
+            label={novice ? 'Things you asked for' : 'Prompt loops'}
             value={analytics.totalLoops}
-            unit="loops"
+            unit={novice ? undefined : 'loops'}
             icon="⟳"
             status="neutral"
             delta={deltaFor(trend, 'totalLoops', 'sum')}
           />
-          <MetricCard
-            label="Tokens"
-            value={fmtTok(analytics.totalPromptTokens + analytics.totalCompletionTokens)}
-            icon="▤"
-            status="neutral"
-            comparison={`In ${fmtTok(analytics.totalPromptTokens)} · Out ${fmtTok(analytics.totalCompletionTokens)}`}
-          />
+          {novice ? (
+            <MetricCard
+              label="Typical cost per ask"
+              value={`$${(analytics.avgCostPerLoop * CREDIT_USD).toFixed(3)}`}
+              icon="◉"
+              status={analytics.avgCostPerLoop > 100 ? 'warning' : 'good'}
+              comparison={`${fmtCr(analytics.avgCostPerLoop)} credits each`}
+            />
+          ) : (
+            <MetricCard
+              label="Tokens"
+              value={fmtTok(analytics.totalPromptTokens + analytics.totalCompletionTokens)}
+              icon="▤"
+              status="neutral"
+              comparison={`In ${fmtTok(analytics.totalPromptTokens)} · Out ${fmtTok(analytics.totalCompletionTokens)}`}
+            />
+          )}
         </MetricGrid>
       </section>
 
-      {/* Efficiency */}
-      <section class="analytics-section">
-        <div class="section-head">
-          <h3>Efficiency</h3>
-          <span class="section-meta">Cost and cache behaviour</span>
-        </div>
-        <MetricGrid>
-          <MetricCard
-            label="Cache reuse"
-            value={contextFillRatePct.value}
-            icon="⚡"
-            status={analytics.avgContextFillRate >= 0.5 ? 'good' : 'warning'}
-            delta={deltaFor(trend, 'avgContextFillRate', 'mean')}
-          />
-          <MetricCard
-            label="Tool usage"
-            value={toolUsageRatePct.value}
-            icon="⚒"
-            status="neutral"
-            comparison={`${analytics.uniqueToolCount} unique tools`}
-          />
-          <MetricCard
-            label="Avg session"
-            value={formattedDuration.value}
-            icon="⏱"
-            status="neutral"
-            comparison={`${analytics.activeDays} active days`}
-          />
-          <MetricCard
-            label="Cost per loop"
-            value={fmtCr(analytics.avgCostPerLoop)}
-            unit="cr"
-            icon="◈"
-            status={analytics.avgCostPerLoop > 100 ? 'warning' : 'good'}
-            comparison={`${analytics.totalLlmCalls} LLM calls`}
-          />
-        </MetricGrid>
-      </section>
+      {/* Efficiency — advanced only: cache-reuse and cost-per-loop need the
+          vocabulary the Learn card is still introducing. */}
+      {novice ? null : (
+        <section class="analytics-section">
+          <div class="section-head">
+            <h3>Efficiency</h3>
+            <span class="section-meta">Cost and cache behaviour</span>
+          </div>
+          <MetricGrid>
+            <MetricCard
+              label="Cache reuse"
+              value={contextFillRatePct.value}
+              icon="⚡"
+              status={analytics.avgContextFillRate >= 0.5 ? 'good' : 'warning'}
+              delta={deltaFor(trend, 'avgContextFillRate', 'mean')}
+            />
+            <MetricCard
+              label="Tool usage"
+              value={toolUsageRatePct.value}
+              icon="⚒"
+              status="neutral"
+              comparison={`${analytics.uniqueToolCount} unique tools`}
+            />
+            <MetricCard
+              label="Avg session"
+              value={formattedDuration.value}
+              icon="⏱"
+              status="neutral"
+              comparison={`${analytics.activeDays} active days`}
+            />
+            <MetricCard
+              label="Cost per loop"
+              value={fmtCr(analytics.avgCostPerLoop)}
+              unit="cr"
+              icon="◈"
+              status={analytics.avgCostPerLoop > 100 ? 'warning' : 'good'}
+              comparison={`${analytics.totalLlmCalls} LLM calls`}
+            />
+          </MetricGrid>
+        </section>
+      )}
 
       {/* Trends */}
       <section class="analytics-section">
         <div class="section-head">
           <div>
-            <h3>Performance trends</h3>
+            <h3>{novice ? 'Day by day' : 'Performance trends'}</h3>
             <span class="section-sub">Hover a point for that day's numbers</span>
           </div>
           <span class="range-pill">{rangeLabel}</span>
         </div>
-        <TrendChart data={trend} />
+        {novice ? (
+          <TrendChart
+            data={trend}
+            only={['totalAic', 'sessionCount', 'totalLoops']}
+            initial="totalAic"
+          />
+        ) : (
+          <TrendChart data={trend} />
+        )}
       </section>
 
-      {/* Interaction quality */}
-      <section class="analytics-section">
-        <div class="section-head">
-          <h3>Interaction quality</h3>
-          <span class="section-meta">How you and the agent work together</span>
-        </div>
-        <MetricGrid>
-          <MetricCard
-            label="Model switches"
-            value={analytics.avgModelSwitchesPerSession.toFixed(1)}
-            unit="per session"
-            icon="⇄"
-            status={analytics.avgModelSwitchesPerSession >= 2 ? 'warning' : 'good'}
-            comparison={`${analytics.totalModelSwitches} total · ${(analytics.modelSwitchRate * 100).toFixed(0)}% of sessions`}
-          />
-          <MetricCard
-            label={`Sessions over ${thresholdPct}% context`}
-            value={analytics.sessionsOverContextThreshold}
-            unit={`of ${analytics.totalSessions}`}
-            icon="▰"
-            status={
-              analytics.contextPressureRate > 0.25
-                ? 'critical'
-                : analytics.contextPressureRate > 0
-                  ? 'warning'
-                  : 'good'
-            }
-            comparison={`${analytics.totalHighContextCalls} calls · peak ${(analytics.maxPeakContextRatio * 100).toFixed(0)}%`}
-          />
-          <MetricCard
-            label="Steps per loop"
-            value={analytics.avgStepsPerLoop.toFixed(1)}
-            unit="steps"
-            icon="⋯"
-            status={analytics.avgStepsPerLoop > 15 ? 'warning' : 'neutral'}
-            comparison={`Longest run ${analytics.maxLoopSteps} steps`}
-          />
-          <MetricCard
-            label="Repeat tool calls"
-            value={`${(analytics.repeatedToolRate * 100).toFixed(0)}%`}
-            icon="⟲"
-            status={analytics.repeatedToolRate > 0.2 ? 'warning' : 'good'}
-            comparison={`${analytics.totalRepeatedToolCalls} of ${analytics.totalToolCalls} tool calls`}
-          />
-        </MetricGrid>
-      </section>
+      {/* Interaction quality — advanced only. */}
+      {novice ? null : (
+        <section class="analytics-section">
+          <div class="section-head">
+            <h3>Interaction quality</h3>
+            <span class="section-meta">How you and the agent work together</span>
+          </div>
+          <MetricGrid>
+            <MetricCard
+              label="Model switches"
+              value={analytics.avgModelSwitchesPerSession.toFixed(1)}
+              unit="per session"
+              icon="⇄"
+              status={analytics.avgModelSwitchesPerSession >= 2 ? 'warning' : 'good'}
+              comparison={`${analytics.totalModelSwitches} total · ${(analytics.modelSwitchRate * 100).toFixed(0)}% of sessions`}
+            />
+            <MetricCard
+              label={`Sessions over ${thresholdPct}% context`}
+              value={analytics.sessionsOverContextThreshold}
+              unit={`of ${analytics.totalSessions}`}
+              icon="▰"
+              status={
+                analytics.contextPressureRate > 0.25
+                  ? 'critical'
+                  : analytics.contextPressureRate > 0
+                    ? 'warning'
+                    : 'good'
+              }
+              comparison={`${analytics.totalHighContextCalls} calls · peak ${(analytics.maxPeakContextRatio * 100).toFixed(0)}%`}
+            />
+            <MetricCard
+              label="Steps per loop"
+              value={analytics.avgStepsPerLoop.toFixed(1)}
+              unit="steps"
+              icon="⋯"
+              status={analytics.avgStepsPerLoop > 15 ? 'warning' : 'neutral'}
+              comparison={`Longest run ${analytics.maxLoopSteps} steps`}
+            />
+            <MetricCard
+              label="Repeat tool calls"
+              value={`${(analytics.repeatedToolRate * 100).toFixed(0)}%`}
+              icon="⟲"
+              status={analytics.repeatedToolRate > 0.2 ? 'warning' : 'good'}
+              comparison={`${analytics.totalRepeatedToolCalls} of ${analytics.totalToolCalls} tool calls`}
+            />
+          </MetricGrid>
+        </section>
+      )}
 
-      {/* Insights */}
+      {/* Insights are already plain English and already actionable, so they are
+          the one dense-view section that earns its place in the simple one. */}
       <section class="analytics-section">
         <InsightsList insights={insights} />
       </section>
 
-      {/* Interaction breakdowns */}
-      <section class="analytics-section">
-        <div class="section-head">
-          <h3>Session patterns</h3>
-          <span class="section-meta">
-            {analytics.totalPrompts} prompts · {analytics.avgPromptChars.toFixed(0)} chars average
-          </span>
-        </div>
-        <div class="breakdown-grid">
-          <ContextPressurePanel
-            buckets={analytics.contextPressureBuckets}
-            threshold={analytics.contextThreshold}
-            sessionsOver={analytics.sessionsOverContextThreshold}
-            totalSessions={analytics.totalSessions}
-            highContextCalls={analytics.totalHighContextCalls}
-            maxPeakRatio={analytics.maxPeakContextRatio}
-          />
-          <ModelSwitchPanel
-            stats={analytics.modelSwitchStats}
-            totalSwitches={analytics.totalModelSwitches}
-            avgPerSession={analytics.avgModelSwitchesPerSession}
-          />
-          <ActivityByHour hourlyActivity={analytics.hourlyActivity} />
-        </div>
-      </section>
+      {novice ? (
+        <section class="analytics-section">
+          <LearnCard lessons={ANALYTICS_LESSONS} title="Learn" />
+        </section>
+      ) : null}
 
-      {/* Usage breakdowns */}
-      <section class="analytics-section">
-        <div class="section-head">
-          <h3>Usage breakdown</h3>
-          <span class="section-meta">Where the calls and credits go</span>
-        </div>
-        <div class="breakdown-grid">
-          <ModelBreakdown stats={analytics.modelStats} />
-          <ToolBreakdown stats={analytics.toolStats} totalSessions={analytics.totalSessions} />
-          <StepKindBreakdown stats={analytics.stepKindStats} />
-        </div>
-      </section>
+      {/* Interaction breakdowns — advanced only. */}
+      {novice ? null : (
+        <section class="analytics-section">
+          <div class="section-head">
+            <h3>Session patterns</h3>
+            <span class="section-meta">
+              {analytics.totalPrompts} prompts · {analytics.avgPromptChars.toFixed(0)} chars average
+            </span>
+          </div>
+          <div class="breakdown-grid">
+            <ContextPressurePanel
+              buckets={analytics.contextPressureBuckets}
+              threshold={analytics.contextThreshold}
+              sessionsOver={analytics.sessionsOverContextThreshold}
+              totalSessions={analytics.totalSessions}
+              highContextCalls={analytics.totalHighContextCalls}
+              maxPeakRatio={analytics.maxPeakContextRatio}
+            />
+            <ModelSwitchPanel
+              stats={analytics.modelSwitchStats}
+              totalSwitches={analytics.totalModelSwitches}
+              avgPerSession={analytics.avgModelSwitchesPerSession}
+            />
+            <ActivityByHour hourlyActivity={analytics.hourlyActivity} />
+          </div>
+        </section>
+      )}
+
+      {/* Usage breakdowns — advanced only. */}
+      {novice ? null : (
+        <section class="analytics-section">
+          <div class="section-head">
+            <h3>Usage breakdown</h3>
+            <span class="section-meta">Where the calls and credits go</span>
+          </div>
+          <div class="breakdown-grid">
+            <ModelBreakdown stats={analytics.modelStats} />
+            <ToolBreakdown stats={analytics.toolStats} totalSessions={analytics.totalSessions} />
+            <StepKindBreakdown stats={analytics.stepKindStats} />
+          </div>
+        </section>
+      )}
+
+      {novice ? (
+        <section class="analytics-section">
+          <MoreDetail label="See cache efficiency, model switching, context pressure and the full usage breakdown" />
+        </section>
+      ) : null}
 
       {/* Footer */}
       <div class="analytics-footer">
         <span class="analytics-computed">
-          Computed at {new Date(analytics.computedAt).toLocaleString()}
+          {novice
+            ? `Updated ${new Date(analytics.computedAt).toLocaleTimeString()}`
+            : `Computed at ${new Date(analytics.computedAt).toLocaleString()}`}
         </span>
         <span class="analytics-sessions">
           Based on {analytics.totalSessions} sessions · {rangeLabel.toLowerCase()}

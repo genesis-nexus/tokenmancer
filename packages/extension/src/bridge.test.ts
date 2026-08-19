@@ -6,6 +6,9 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { MeterBridge, type Poster } from './bridge.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cte-ext-'));
+// The bridge now runs a BudgetRunner, which writes a ledger; keep it off the
+// developer's real ~/.tokenmancer.
+process.env.TOKENMANCER_HOME = path.join(tmp, 'home');
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
 const LINES = [
@@ -36,7 +39,7 @@ const steps = (msgs: Frame[]): StepEvent[] =>
     .map((m) => m.event as StepEvent);
 
 describe('MeterBridge', () => {
-  it('auto-tails the default logs dir on subscribe, redacting prompts', () => {
+  it('auto-tails the default logs dir on subscribe, carrying the prompt through', () => {
     const { poster, msgs } = collector();
     const bridge = new MeterBridge(poster, { defaultLogsDir: makeLogsDir('ws-a') });
     bridge.handle({ type: 'subscribe' });
@@ -44,20 +47,23 @@ describe('MeterBridge', () => {
     expect(msgs.some((m) => m.type === 'event' && m.event?.kind === 'control')).toBe(true);
     const s = steps(msgs);
     expect(s).toHaveLength(1);
-    expect(JSON.stringify(msgs)).not.toContain('SECRET');
-    expect(s[0]?.userPrompt).toBe('');
+    // The prompt is what labels a loop in the webview; redacting it by default
+    // left every card anonymous. It must survive the whole tail → redact → post
+    // path, not merely exist in the parser.
+    expect(s[0]?.userPrompt).toBe('SECRET refactor formatPrice');
     expect(s[0]?.aic).toBeCloseTo(1.695, 6);
     bridge.dispose();
   });
 
-  it('shows prompts when configured', () => {
+  it('redacts prompts when the user opts out', () => {
     const { poster, msgs } = collector();
     const bridge = new MeterBridge(poster, {
       defaultLogsDir: makeLogsDir('ws-b'),
-      showPrompts: true,
+      showPrompts: false,
     });
     bridge.handle({ type: 'subscribe' });
-    expect(JSON.stringify(msgs)).toContain('SECRET');
+    expect(JSON.stringify(msgs)).not.toContain('SECRET');
+    expect(steps(msgs)[0]?.userPrompt).toBe('');
     bridge.dispose();
   });
 
@@ -121,6 +127,114 @@ describe('MeterBridge', () => {
     bridge.setShowPrompts(true);
     bridge.handle({ type: 'subscribe' });
     expect(JSON.stringify(msgs)).toContain('SECRET');
+    bridge.dispose();
+  });
+});
+
+describe('MeterBridge budget RPCs', () => {
+  function rpc(bridge: MeterBridge, msgs: Frame[], method: string, params?: unknown): unknown {
+    const id = Math.floor(Math.random() * 1e6);
+    bridge.handle({ type: 'rpc', id, method, params });
+    return msgs.find((m) => m.type === 'rpc-result' && m.id === id)?.result;
+  }
+
+  it('round-trips getConfig and setBudget', async () => {
+    const { poster, msgs } = collector();
+    const bridge = new MeterBridge(poster, {});
+    rpc(bridge, msgs, 'getConfig');
+    await new Promise((r) => setTimeout(r, 10));
+
+    const cfg = msgs.find((m) => m.type === 'rpc-result')?.result as {
+      pricing: { poolCredits: number };
+    };
+    expect(cfg.pricing.poolCredits).toBe(3000);
+
+    bridge.handle({
+      type: 'rpc',
+      id: 99,
+      method: 'setBudget',
+      params: {
+        rules: [{ id: 'm', period: 'month', metric: 'credits', limit: 250, thresholds: [1] }],
+      },
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    const set = msgs.find((m) => m.id === 99)?.result as { ok: boolean };
+    expect(set.ok).toBe(true);
+
+    bridge.handle({ type: 'rpc', id: 100, method: 'getSpend' });
+    await new Promise((r) => setTimeout(r, 10));
+    const spend = msgs.find((m) => m.id === 100)?.result as {
+      rules: Array<{ limit: number }>;
+      snapshot: { byPeriod: Record<string, unknown> };
+    };
+    expect(spend.rules[0]?.limit).toBe(250);
+    expect(spend.snapshot.byPeriod.month).toBeDefined();
+    bridge.dispose();
+  });
+
+  it('rejects a malformed rule rather than installing one that never fires', async () => {
+    const { poster, msgs } = collector();
+    const bridge = new MeterBridge(poster, {});
+    bridge.handle({
+      type: 'rpc',
+      id: 7,
+      method: 'setBudget',
+      params: { rules: [{ id: 'bad', period: 'fortnight', metric: 'credits', limit: 1 }] },
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    const r = msgs.find((m) => m.id === 7)?.result as { ok: boolean; rules?: unknown[] };
+    // The rule is dropped by the validator, so the resulting list is empty.
+    expect(r.rules).toEqual([]);
+    bridge.dispose();
+  });
+
+  it('pushes an alert to the webview and taps the host callback', async () => {
+    const { poster, msgs } = collector();
+    const seen: string[] = [];
+    const dir = makeLogsDir('alerting');
+    const bridge = new MeterBridge(poster, {
+      defaultLogsDir: dir,
+      onAlert: (a) => seen.push(a.severity),
+    });
+    // A limit low enough that the fixture's single call blows straight past it.
+    bridge.handle({
+      type: 'rpc',
+      id: 1,
+      method: 'setBudget',
+      params: {
+        rules: [{ id: 'tiny', period: 'session', metric: 'credits', limit: 0.01, thresholds: [1] }],
+      },
+    });
+    // RPCs dispatch on a microtask, so the rule must land before the tail starts.
+    await new Promise((r) => setTimeout(r, 10));
+    bridge.handle({ type: 'subscribe' });
+    await new Promise((r) => setTimeout(r, 60));
+
+    expect(seen).toContain('critical');
+    expect(msgs.some((m) => m.type === 'event' && m.event?.kind === 'alert')).toBe(true);
+    bridge.dispose();
+  });
+
+  it('reports spend to the status-bar callback as steps arrive', async () => {
+    const { poster } = collector();
+    // The status bar shows month-to-date, and a month only counts steps that
+    // happened in it — so this fixture needs today's date, not the shared one.
+    const dir = path.join(tmp, 'spending-now', 'GitHub.copilot-chat', 'debug-logs');
+    fs.mkdirSync(dir, { recursive: true });
+    const now = Date.now();
+    fs.writeFileSync(
+      path.join(dir, 'main.jsonl'),
+      `${LINES.map((l) => l.replace(/"ts":\d+/, `"ts":${now}`)).join('\n')}\n`,
+    );
+    const seen: number[] = [];
+    const bridge = new MeterBridge(poster, {
+      defaultLogsDir: dir,
+      onSpend: (credits) => seen.push(credits),
+    });
+    bridge.handle({ type: 'subscribe' });
+    await new Promise((r) => setTimeout(r, 60));
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen[seen.length - 1]).toBeGreaterThan(0);
     bridge.dispose();
   });
 });

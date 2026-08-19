@@ -48,6 +48,12 @@
   --an-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
   --an-shadow-lift: 0 4px 16px rgba(0, 0, 0, 0.45);
   --an-radius: 12px;
+
+  /* Widen the shared shell (theme.css) to this surface's measure: the 1200px
+     dashboard plus the 1.75rem gutter its <main> already carries, so the app
+     bar and the head above sit on the dashboard's own edges. */
+  --shell-max: 1256px;
+  --shell-pad: 1.75rem;
 }
 
 @media (prefers-color-scheme: light) {
@@ -141,28 +147,53 @@ body {
   font-family: var(--sans, system-ui, -apple-system, "Segoe UI", sans-serif);
 }
 
-.analytics-view-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1.15rem 1.75rem;
-  border-bottom: 1px solid var(--an-line);
-  background: var(--an-surface);
-  flex-wrap: wrap;
-  gap: 1rem;
+/* Holds the shared .pageHead to this surface's own measure — the dashboard
+   below is wider than the meter, and the head has to line up with it. */
+.analytics-view-head {
+  width: 100%;
+  max-width: var(--shell-max);
+  margin: 0 auto;
+  padding: 0 var(--shell-pad);
 }
 
-.analytics-view-title h1 {
-  margin: 0;
-  font-size: 1.05rem;
-  font-weight: 650;
-  letter-spacing: -0.01em;
+/* The head takes its ink from the analytics token set rather than theme.css's,
+   so it tracks this surface's own palette. */
+.analytics-view-head h1 {
   color: var(--an-ink);
 }
 
-.analytics-view-subtitle {
-  font-size: 0.8rem;
+.analytics-view-head .sub {
   color: var(--an-muted);
+}
+
+.providerFilter {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  margin: 0 0.25rem 0 0;
+  border: 1px solid var(--an-line);
+  border-radius: 999px;
+  background: var(--an-surface2, var(--an-surface));
+}
+.providerOpt {
+  border: 0;
+  background: none;
+  color: var(--an-muted);
+  font: inherit;
+  font-size: 0.7rem;
+  line-height: 1;
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.providerOpt:hover {
+  color: var(--an-ink);
+}
+.providerOpt.on {
+  background: var(--an-bg, var(--an-surface));
+  color: var(--an-ink);
+  font-weight: 600;
 }
 
 .workspace-selector {
@@ -192,12 +223,15 @@ body {
 }
 
 .analytics-view-notice {
-  padding: 1rem 1.75rem 0;
+  width: 100%;
+  max-width: var(--shell-max);
+  margin: 0 auto;
+  padding: 0 var(--shell-pad) 1rem;
 }
 
 .analytics-view-main {
   flex: 1;
-  padding: 1.75rem;
+  padding: 0.5rem 1.75rem 1.75rem;
   overflow-y: auto;
 }
 
@@ -635,6 +669,23 @@ body {
   stroke-dasharray: 5 5;
   stroke-linecap: round;
   opacity: 0.45;
+}
+
+/* Bars sit under the moving-average line, so they are tinted rather than solid
+   — a full-strength fill would bury the trend they exist to be read against. */
+.trend-bar {
+  fill: var(--an-accent);
+  opacity: 0.55;
+  transition: opacity 0.15s ease;
+}
+
+.trend-svg:hover .trend-bar {
+  opacity: 0.35;
+}
+
+.trend-bar.is-active,
+.trend-svg:hover .trend-bar.is-active {
+  opacity: 1;
 }
 
 /* Dots carry a surface-coloured ring so they stay legible over the line. */
@@ -1110,15 +1161,13 @@ body {
 /* ------------------------------------------------------------ responsive -- */
 
 @media (max-width: 768px) {
-  .analytics-view-header,
+  :root {
+    --shell-pad: 1rem;
+  }
+
   .analytics-view-main {
     padding-left: 1rem;
     padding-right: 1rem;
-  }
-
-  .analytics-view-header {
-    flex-direction: column;
-    align-items: flex-start;
   }
 
   .workspace-selector {
@@ -1162,6 +1211,7 @@ body {
   .metric-card,
   .breakdown-bar,
   .trend-dot,
+  .trend-bar,
   .hour-bar,
   .trend-tab {
     transition: none;
@@ -1174,4 +1224,193 @@ body {
   .loading-spinner {
     animation: none;
   }
+}
+
+/* ── Level-of-detail toggle ──────────────────────────────────────────────
+   Segmented control. Unlike the theme toggle, the current mode is not
+   self-evident from the page, so both options stay labelled. */
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.skillToggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface2);
+}
+.skillOpt {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  padding: 5px 11px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.skillOpt:hover {
+  color: var(--ink);
+}
+.skillOpt.on {
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+}
+.skillOpt:focus-visible {
+  outline: 2px solid var(--read);
+  outline-offset: 1px;
+}
+
+/* ── Learn card ─────────────────────────────────────────────────────────
+   One idea, then a door into the detailed view. */
+.learnCard {
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--read) 35%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--read) 7%, var(--surface));
+}
+.learnHead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.learnKicker {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--read);
+  font-weight: 700;
+}
+.learnHead h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.learnBody {
+  margin: 8px 0 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink2);
+  max-width: 68ch;
+}
+.learnFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.learnDots {
+  display: flex;
+  gap: 6px;
+}
+.learnDot {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--track);
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.learnDot:hover {
+  transform: scale(1.25);
+}
+.learnDot.on {
+  background: var(--read);
+}
+.learnMore,
+.moreDetail {
+  border: 0;
+  background: none;
+  color: var(--read);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 2px;
+  border-radius: 4px;
+}
+.learnMore:hover,
+.moreDetail:hover {
+  text-decoration: underline;
+}
+.learnMore:focus-visible,
+.moreDetail:focus-visible,
+.loopExpand:focus-visible {
+  outline: 2px solid var(--read);
+  outline-offset: 2px;
+}
+
+/* Stub left where a dense section was hidden. */
+.moreDetail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  text-align: left;
+  color: var(--ink2);
+  font-weight: 500;
+}
+.moreDetail:hover {
+  border-color: var(--read);
+  color: var(--ink);
+  text-decoration: none;
+}
+.moreDetailArrow {
+  color: var(--read);
+  font-weight: 700;
+  flex: none;
+}
+
+/* ── Simple-view loop card ──────────────────────────────────────────────── */
+.loopPlain {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink2);
+}
+.loopExpand {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  padding: 9px 14px;
+  cursor: pointer;
+}
+.loopExpand:hover {
+  color: var(--ink);
+  background: var(--surface2);
+}
+
+/* The simple readout runs to three stats, so let them breathe. */
+.readout-simple .stat .val {
+  font-variant-numeric: tabular-nums;
 }

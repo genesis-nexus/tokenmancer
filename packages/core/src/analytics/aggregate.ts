@@ -3,7 +3,7 @@
  */
 
 import type { MeterEvent, StepEvent, StepKind } from '../contract/events.js';
-import { contextWindowFor } from '../pricing/models.js';
+import { contextWindowForProvider } from '../pricing/provider.js';
 import type {
   AnalyticsInsight,
   ContextPressureBucket,
@@ -142,7 +142,7 @@ export function computeSessionMetrics(sessionId: string, events: MeterEvent[]): 
 
       // Context pressure is only meaningful for billed LLM calls: a tool step
       // carries no prompt of its own.
-      const window = contextWindowFor(step.model);
+      const window = contextWindowForProvider(step.provider, step.model);
       if (window > 0 && step.prompt > 0) {
         const ratio = step.prompt / window;
         contextRatioSum += ratio;

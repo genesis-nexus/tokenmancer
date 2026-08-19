@@ -1,5 +1,7 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
+import { setConfig, setSpend, settingsOpen, summarizeSpend } from '../state/budget-store.js';
+import { applyConfigDefault, skillMode } from '../state/skill-store.js';
 import {
   connection,
   dispatch,
@@ -9,12 +11,15 @@ import {
   resetSession,
 } from '../state/store.js';
 import type { MeterTransport, SettingStatus } from '../transport.js';
+import { AlertBanner } from './AlertBanner.js';
+import { AppNav, type NavLink } from './AppNav.js';
 import { InstrPanel } from './InstrPanel.js';
+import { LearnCard } from './LearnCard.js';
 import { LoopCard } from './LoopCard.js';
 import { Readout } from './Readout.js';
 import { SettingsBanner } from './SettingsBanner.js';
 import { SetupGuide } from './SetupGuide.js';
-import { ThemeToggle } from './ThemeToggle.js';
+import { SkillToggle } from './SkillToggle.js';
 import { TooltipLayer } from './TooltipLayer.js';
 import { WorkspaceBar } from './WorkspaceBar.js';
 
@@ -28,7 +33,11 @@ export interface AppProps {
   /** Wire the transport's live stream on mount (true for live, false for replay). */
   subscribe?: boolean;
   showConnection?: boolean;
-  navLinks?: { href: string; text: string }[];
+  /** Destinations in the static header. Defaults to every web surface; pass `[]`
+   *  in the VS Code webviews, where there is nowhere to navigate to. */
+  navLinks?: readonly NavLink[];
+  /** Which nav tab this render is. Defaults to the browser location. */
+  navCurrent?: string;
   emptyText?: string;
 }
 
@@ -39,11 +48,8 @@ export function App({
   sourceBar,
   subscribe = true,
   showConnection = true,
-  navLinks = [
-    { href: '/analytics', text: 'Analytics →' },
-    { href: '/sessions', text: 'Past sessions →' },
-    { href: '/simulator', text: 'What-if simulator →' },
-  ],
+  navLinks,
+  navCurrent,
   emptyText = 'Waiting for Copilot activity — run an Agent request in VS Code, or paste a usage block into the inbox file.',
 }: AppProps) {
   useEffect(() => {
@@ -75,6 +81,36 @@ export function App({
     return () => document.removeEventListener('visibilitychange', check);
   }, [transport]);
 
+  // Budget state, on producers that have it (SSE + postMessage, not replay).
+  // Polled rather than pushed: spend changes continuously, but only the
+  // threshold crossings are urgent, and those arrive as AlertEvents.
+  useEffect(() => {
+    if (!transport.getSpend) return;
+    let alive = true;
+    const refresh = () => {
+      transport
+        .getConfig?.()
+        .then((c) => {
+          if (!alive) return;
+          setConfig(c);
+          applyConfigDefault(c.ui?.defaultDetail);
+        })
+        .catch(() => {});
+      transport
+        .getSpend?.()
+        .then((r) => {
+          if (alive) setSpend(summarizeSpend(r.snapshot, r.rules));
+        })
+        .catch(() => {});
+    };
+    refresh();
+    const t = setInterval(refresh, 30_000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [transport]);
+
   const conn = connection.value;
   const gs = groups.value;
   const fresh = freshGroups.value;
@@ -92,97 +128,149 @@ export function App({
   }
 
   const bar = sourceBar !== undefined ? sourceBar : <WorkspaceBar transport={transport} />;
+  const novice = skillMode.value === 'novice';
 
   return (
-    <div class="wrap">
-      <header class="mast">
-        <div>
-          <h1>{title}</h1>
-          <p class="sub">{subtitle}</p>
-        </div>
-        <div class="mastRight">
-          {showConnection ? (
+    <>
+      <AppNav
+        links={navLinks}
+        current={navCurrent}
+        transport={transport}
+        status={
+          showConnection ? (
             <span class="conn">
               <span class={`dot${conn === 'live' ? ' live' : conn === 'down' ? ' down' : ''}`} />
               <span>
                 {conn === 'live' ? 'live' : conn === 'down' ? 'reconnecting…' : 'connecting…'}
               </span>
             </span>
-          ) : null}
-          {navLinks.map((link) => (
-            <a class="navlink" href={link.href} key={link.href}>
-              {link.text}
-            </a>
-          ))}
-          <ThemeToggle />
+          ) : null
+        }
+      />
+
+      <div class="wrap">
+        {/* View-scoped head: what this surface is, and the one control that
+            changes how all of it reads. */}
+        <div class="pageHead">
+          <div class="pageTitle">
+            <h1>{title}</h1>
+            <p class="sub">{subtitle}</p>
+          </div>
+          <div class="pageActions">
+            <SkillToggle />
+          </div>
         </div>
-      </header>
 
-      {settings ? (
-        <SettingsBanner settings={settings} onOpenSetting={(key) => transport.openSetting?.(key)} />
-      ) : !transport.checkSettings ? (
-        <SetupGuide />
-      ) : null}
+        {settings ? (
+          <SettingsBanner
+            settings={settings}
+            onOpenSetting={(key) => transport.openSetting?.(key)}
+          />
+        ) : !transport.checkSettings ? (
+          <SetupGuide />
+        ) : null}
 
-      {bar}
+        <AlertBanner
+          onAction={(kind, arg) => {
+            // VS Code jumps to its own settings UI; the web app has no such thing,
+            // so it opens the in-app dialog rather than doing nothing at all.
+            if (kind === 'openSetting' && arg && transport.openSetting) transport.openSetting(arg);
+            else if (transport.updateSettings) settingsOpen.value = true;
+            else transport.openSetting?.('tokenmancer.budgets');
+          }}
+        />
 
-      <Readout onNewSession={newSession} />
-      <InstrPanel />
+        {bar}
 
-      <div class="feedHead">
-        <span class="feedLbl">Agent loops · newest first</span>
-        <div class="legend">
-          <span>
-            <i class="sw" style="background:var(--read)" />
-            cache-read
+        <Readout onNewSession={newSession} />
+        {novice ? null : <InstrPanel />}
+
+        {novice ? <LearnCard /> : null}
+
+        <div class="feedHead">
+          <span class="feedLbl">
+            {novice ? 'What you asked for · newest first' : 'Agent loops · newest first'}
           </span>
-          <span>
-            <i class="sw" style="background:var(--write)" />
-            cache-write
-          </span>
-          <span>
-            <i class="sw" style="background:var(--fresh)" />
-            fresh input
-          </span>
-          <span>
-            <i class="sw" style="background:var(--out)" />
-            output
-          </span>
+          {/* The cost bar is still on every card in the simple view, so the key
+              stays — said in words rather than in billing terms. */}
+          <div class="legend">
+            <span>
+              <i class="sw" style="background:var(--read)" />
+              {novice ? 'conversation so far' : 'cache-read'}
+            </span>
+            <span>
+              <i class="sw" style="background:var(--write)" />
+              {novice ? 'saved for reuse' : 'cache-write'}
+            </span>
+            <span>
+              <i class="sw" style="background:var(--fresh)" />
+              {novice ? 'new material' : 'fresh input'}
+            </span>
+            <span>
+              <i class="sw" style="background:var(--out)" />
+              {novice ? "the model's reply" : 'output'}
+            </span>
+          </div>
         </div>
-      </div>
 
-      <details class="help">
-        <summary>
-          <span class="chev">▶</span>How to read this meter
-        </summary>
-        <div class="hbody">
-          <b>One prompt = one loop card.</b> Steps run top to bottom; each is one model round-trip.
-          The bar on a step is that call's <b>context window</b>, scaled to the loop's largest — it
-          grows step after step because the whole conversation is re-sent on every call. Its
-          segments show who absorbed it: cache-read (cheap), cache-write (one-time premium), fresh
-          input (full price). The bar under the prompt splits the <b>loop's cost</b> — watch output,
-          a few hundred tokens, take the biggest slice of the bill. Hover any bar for exact numbers;
-          a loop's <b>step table</b> holds every figure.
+        <details class="help">
+          <summary>
+            <span class="chev">▶</span>
+            {novice ? 'How to read this' : 'How to read this meter'}
+          </summary>
+          {novice ? (
+            <div class="hbody">
+              <b>One card = one thing you asked for.</b> The number on the right is what it cost
+              you. The coloured bar shows where that money went, and the four colours are explained
+              just above. Open <b>Show the steps</b> on any card to see what the agent actually did
+              to answer you — reading files, searching, editing, checking its work. When you want
+              the exact token counts behind all of it, switch to <b>Detailed</b> beside the title.
+            </div>
+          ) : (
+            <div class="hbody">
+              <b>One prompt = one loop card.</b> Steps run top to bottom; each is one model
+              round-trip. The bar on a step is that call's <b>context window</b>, scaled to the
+              loop's largest — it grows step after step because the whole conversation is re-sent on
+              every call. Its segments show who absorbed it: cache-read (cheap), cache-write
+              (one-time premium), fresh input (full price). The bar under the prompt splits the{' '}
+              <b>loop's cost</b> — watch output, a few hundred tokens, take the biggest slice of the
+              bill. Hover any bar for exact numbers; a loop's <b>step table</b> holds every figure.
+            </div>
+          )}
+        </details>
+
+        <div class="feed">
+          {gs.length ? (
+            gs.map((g) => (
+              <LoopCard
+                key={g.groupId}
+                group={g}
+                hasInstr={hasInstr}
+                fresh={fresh.has(g.groupId)}
+              />
+            ))
+          ) : (
+            <div class="empty">{emptyText}</div>
+          )}
         </div>
-      </details>
 
-      <div class="feed">
-        {gs.length ? (
-          gs.map((g) => (
-            <LoopCard key={g.groupId} group={g} hasInstr={hasInstr} fresh={fresh.has(g.groupId)} />
-          ))
-        ) : (
-          <div class="empty">{emptyText}</div>
-        )}
+        <div class="foot">
+          {novice ? (
+            <>
+              Costs marked ≈ are our best estimate; the rest come straight from Copilot's own
+              records. One credit is one US cent.
+            </>
+          ) : (
+            <>
+              Costs marked ≈ are estimated from token counts × the rate table; unmarked costs come
+              straight from the log's own credit fields. Hover any bar for its split · every number
+              is also in the loop's step table.
+            </>
+          )}
+        </div>
+
+        <TooltipLayer />
       </div>
-
-      <div class="foot">
-        Costs marked ≈ are estimated from token counts × the rate table; unmarked costs come
-        straight from the log's own credit fields. Hover any bar for its split · every number is
-        also in the loop's step table.
-      </div>
-
-      <TooltipLayer />
-    </div>
+    </>
   );
 }
