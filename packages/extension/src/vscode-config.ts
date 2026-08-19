@@ -16,6 +16,7 @@ const KEYS = [
   'pricing.defaultModel',
   'pricing.poolCredits',
   'privacy.showPrompts',
+  'privacy.showToolQueries',
   'privacy.showPaths',
   'alerts.enabled',
   'alerts.cooldownMinutes',

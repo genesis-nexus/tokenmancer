@@ -14,6 +14,7 @@ import {
   type TailController,
   discoverSessionsIn,
   discoverWorkspaces,
+  formatForWorkspace,
   getWorkspaceAnalyticsWithInsights,
   isContained,
   isSafeLogFileName,
@@ -60,7 +61,12 @@ export interface BridgeOptions {
  */
 export class MeterBridge {
   private source: TailController | null = null;
-  private readonly redactOpts: { showPrompts: boolean; showPaths: boolean; salt: string };
+  private readonly redactOpts: {
+    showPrompts: boolean;
+    showToolQueries: boolean;
+    showPaths: boolean;
+    salt: string;
+  };
   private config: TokenmancerConfig;
   private budget: BudgetRunner;
   private workspaceId = 'default';
@@ -72,6 +78,7 @@ export class MeterBridge {
     this.config = opts.config ?? loadConfig().config;
     this.redactOpts = {
       showPrompts: opts.showPrompts ?? this.config.privacy.showPrompts,
+      showToolQueries: this.config.privacy.showToolQueries,
       showPaths: this.config.privacy.showPaths,
       salt: randomBytes(8).toString('hex'),
     };
@@ -97,6 +104,7 @@ export class MeterBridge {
   setConfig(config: TokenmancerConfig): void {
     this.config = config;
     this.redactOpts.showPrompts = config.privacy.showPrompts;
+    this.redactOpts.showToolQueries = config.privacy.showToolQueries;
     this.redactOpts.showPaths = config.privacy.showPaths;
     this.budget.setConfig(config);
   }
@@ -184,6 +192,7 @@ export class MeterBridge {
       case 'listWorkspaces':
         return discoverWorkspaces().map((w) => ({
           id: w.id,
+          provider: w.provider,
           folderName: w.folderName,
           modifiedStr: w.modifiedStr,
           sessionCount: w.sessionCount,
@@ -203,9 +212,11 @@ export class MeterBridge {
       case 'loadSession': {
         const abs = resolveLogPath(p.ws ?? '', p.session ?? 'main', p.log ?? 'main.jsonl');
         if (!abs) return [];
-        return loadLogFile(abs, { sessionId: p.session, defaultModel: this.rateModel() }).map((e) =>
-          redactEvent(e, this.redactOpts),
-        );
+        return loadLogFile(abs, {
+          sessionId: p.session,
+          format: formatForWorkspace(p.ws ?? ''),
+          defaultModel: this.rateModel(),
+        }).map((e) => redactEvent(e, this.redactOpts));
       }
       case 'tailWorkspace': {
         const target = this.resolveTail(p.ws ?? '', p.session, p.log);

@@ -39,7 +39,7 @@ const steps = (msgs: Frame[]): StepEvent[] =>
     .map((m) => m.event as StepEvent);
 
 describe('MeterBridge', () => {
-  it('auto-tails the default logs dir on subscribe, redacting prompts', () => {
+  it('auto-tails the default logs dir on subscribe, carrying the prompt through', () => {
     const { poster, msgs } = collector();
     const bridge = new MeterBridge(poster, { defaultLogsDir: makeLogsDir('ws-a') });
     bridge.handle({ type: 'subscribe' });
@@ -47,20 +47,23 @@ describe('MeterBridge', () => {
     expect(msgs.some((m) => m.type === 'event' && m.event?.kind === 'control')).toBe(true);
     const s = steps(msgs);
     expect(s).toHaveLength(1);
-    expect(JSON.stringify(msgs)).not.toContain('SECRET');
-    expect(s[0]?.userPrompt).toBe('');
+    // The prompt is what labels a loop in the webview; redacting it by default
+    // left every card anonymous. It must survive the whole tail → redact → post
+    // path, not merely exist in the parser.
+    expect(s[0]?.userPrompt).toBe('SECRET refactor formatPrice');
     expect(s[0]?.aic).toBeCloseTo(1.695, 6);
     bridge.dispose();
   });
 
-  it('shows prompts when configured', () => {
+  it('redacts prompts when the user opts out', () => {
     const { poster, msgs } = collector();
     const bridge = new MeterBridge(poster, {
       defaultLogsDir: makeLogsDir('ws-b'),
-      showPrompts: true,
+      showPrompts: false,
     });
     bridge.handle({ type: 'subscribe' });
-    expect(JSON.stringify(msgs)).toContain('SECRET');
+    expect(JSON.stringify(msgs)).not.toContain('SECRET');
+    expect(steps(msgs)[0]?.userPrompt).toBe('');
     bridge.dispose();
   });
 

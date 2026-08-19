@@ -10,11 +10,24 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { type StepEvent, extractObjects, periodKeyFor } from '@cte/core';
+import {
+  CREDIT_USD,
+  type ProviderId,
+  type StepEvent,
+  extractObjects,
+  periodKeyFor,
+} from '@cte/core';
 import { appendLine, ensureDir, stateDir } from './paths.js';
 
-/** Bump when the entry shape changes; readers skip rows they do not understand. */
-export const LEDGER_SCHEMA = 1;
+/**
+ * Bump when the entry shape changes. Readers skip rows from a FUTURE schema they
+ * cannot understand, but must keep reading older ones — a reader that dropped
+ * them would silently erase the user's month-to-date, which is the one thing
+ * this file exists to protect. See `upgradeEntry`.
+ *
+ * 1 → 2: added `provider`, `usd`, and the cache-write TTL split.
+ */
+export const LEDGER_SCHEMA = 2;
 
 export interface LedgerEntry {
   schema: number;
@@ -24,11 +37,18 @@ export interface LedgerEntry {
   workspaceId: string;
   sessionId: string;
   groupId: string;
+  /** Which meter produced the step. Absent in schema 1, which predates Claude. */
+  provider: ProviderId;
   model: string;
   aic: number;
+  /** Cost on the shared axis. `aic / 100` for every row, including upgraded ones. */
+  usd: number;
   prompt: number;
   completion: number;
   cacheRead: number;
+  cacheWrite: number;
+  cacheWrite5m: number;
+  cacheWrite1h: number;
   freshInput: number;
   isTool: boolean;
   toolName: string;
@@ -64,11 +84,16 @@ export function entryFromStep(ev: StepEvent, workspaceId: string): LedgerEntry {
     workspaceId,
     sessionId: ev.sessionId,
     groupId: ev.groupId,
+    provider: ev.provider,
     model: ev.model,
     aic: ev.aic,
+    usd: ev.usd,
     prompt: ev.prompt,
     completion: ev.completion,
     cacheRead: ev.cacheRead,
+    cacheWrite: ev.cacheWrite,
+    cacheWrite5m: ev.cacheWrite5m,
+    cacheWrite1h: ev.cacheWrite1h,
     freshInput: ev.freshInput,
     isTool: ev.isTool,
     toolName: ev.toolName,
@@ -128,6 +153,23 @@ function monthFilesBetween(from: number, to: number): string[] {
   return out;
 }
 
+/**
+ * Bring an on-disk row up to the current shape, in memory only — the file is
+ * never rewritten. Every schema-1 row predates Claude support, so it is Copilot
+ * spend by construction, and `1 AIC = $0.01` gives its USD for free.
+ */
+function upgradeEntry(e: Partial<LedgerEntry>): LedgerEntry {
+  const aic = typeof e.aic === 'number' ? e.aic : 0;
+  return {
+    ...(e as LedgerEntry),
+    provider: e.provider ?? 'copilot',
+    usd: typeof e.usd === 'number' ? e.usd : Number((aic * CREDIT_USD).toFixed(8)),
+    cacheWrite: e.cacheWrite ?? 0,
+    cacheWrite5m: e.cacheWrite5m ?? 0,
+    cacheWrite1h: e.cacheWrite1h ?? 0,
+  };
+}
+
 export interface ReadSpendOptions {
   from?: number;
   to?: number;
@@ -156,10 +198,12 @@ export function readSpend(opts: ReadSpendOptions = {}): LedgerEntry[] {
     }
     for (const obj of extractObjects(text)) {
       const e = obj as Partial<LedgerEntry>;
-      if (!e || e.schema !== LEDGER_SCHEMA || typeof e.rawKey !== 'string') continue;
+      if (!e || typeof e.schema !== 'number' || typeof e.rawKey !== 'string') continue;
+      // Older rows are upgraded; rows from a newer writer are the ones we skip.
+      if (e.schema < 1 || e.schema > LEDGER_SCHEMA) continue;
       if (typeof e.ts !== 'number' || e.ts < from || e.ts > to) continue;
       if (opts.workspaceId && e.workspaceId !== opts.workspaceId) continue;
-      byKey.set(e.rawKey, e as LedgerEntry);
+      byKey.set(e.rawKey, upgradeEntry(e));
     }
   }
   return [...byKey.values()].sort((a, b) => a.ts - b.ts);

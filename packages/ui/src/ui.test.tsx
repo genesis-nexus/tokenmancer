@@ -16,6 +16,7 @@ import { render } from 'preact';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type MetricKey, TrendChart } from './components/Analytics/TrendChart.js';
 import { App } from './components/App.js';
+import { AppNav, WEB_NAV } from './components/AppNav.js';
 import { Logo } from './components/Logo.js';
 import { SessionBrowser } from './components/SessionBrowser.js';
 import {
@@ -120,7 +121,16 @@ class FakeTransport implements MeterTransport {
     return () => {};
   }
   async listWorkspaces(): Promise<WorkspaceSummary[]> {
-    return [{ id: 'w1', folderName: 'Demo', modifiedStr: 'now', sessionCount: 1, channel: 'Code' }];
+    return [
+      {
+        id: 'w1',
+        provider: 'copilot',
+        folderName: 'Demo',
+        modifiedStr: 'now',
+        sessionCount: 1,
+        channel: 'Code',
+      },
+    ];
   }
   async listSessions(): Promise<SessionSummary[]> {
     return [
@@ -756,7 +766,7 @@ describe('settings dialog', () => {
   /** Capability detection: nothing to persist to means no button to press. */
   it('stays hidden on a transport that cannot save', async () => {
     const { root } = mount(false);
-    await waitForSelector('.mast');
+    await waitForSelector('.appbar');
     expect(root.querySelector('.settingsBtn')).toBeNull();
   });
 });
@@ -930,5 +940,61 @@ describe('brand mark', () => {
     expect(svg.getAttribute('height')).toBe('40');
     const [, , vw, vh] = (svg.getAttribute('viewBox') ?? '').split(' ').map(Number);
     expect(vw).toBe(vh);
+  });
+});
+
+/**
+ * The header is the only place navigation lives, so what it offers has to be
+ * the same on every surface — and it has to say which one you are on, since
+ * four near-identical pages are otherwise told apart only by their content.
+ */
+describe('static header', () => {
+  const roots: HTMLElement[] = [];
+  afterEach(() => {
+    for (const r of roots.splice(0)) {
+      render(null, r);
+      r.remove();
+    }
+  });
+  function mount(node: preact.ComponentChild) {
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    roots.push(root);
+    render(node, root);
+    return root;
+  }
+
+  const tabs = (root: HTMLElement) =>
+    [...root.querySelectorAll('.navTab')].map((a) => a.textContent);
+
+  it('offers every surface, in the same order, whichever one is showing', () => {
+    const expected = ['Live view', 'Analytics', 'Past sessions', 'What-if simulator'];
+    expect(tabs(mount(<AppNav />))).toEqual(expected);
+    expect(tabs(mount(<AppNav current="/simulator" />))).toEqual(expected);
+    expect(WEB_NAV.map((l) => l.href)).toEqual(['/', '/analytics', '/sessions', '/simulator']);
+  });
+
+  it('marks exactly one tab as the page you are on', () => {
+    const root = mount(<AppNav current="/analytics" />);
+    const on = [...root.querySelectorAll('[aria-current="page"]')];
+    expect(on).toHaveLength(1);
+    expect(on[0]?.textContent).toBe('Analytics');
+  });
+
+  /** /replay and /viewer are server aliases for the same surface as /sessions. */
+  it('follows the server aliases rather than going blank on them', () => {
+    const root = mount(<AppNav current="/replay" />);
+    expect(root.querySelector('[aria-current="page"]')?.textContent).toBe('Past sessions');
+  });
+
+  /** Each VS Code panel is its own window: there is nowhere for a tab to go. */
+  it('drops the tab row entirely when there is nowhere to navigate', () => {
+    const root = mount(<AppNav links={[]} />);
+    expect(root.querySelector('.mainNav')).toBeNull();
+    // The brand stops being a link too, rather than pointing at a dead "/".
+    expect(root.querySelector('a.brand')).toBeNull();
+    expect(root.querySelector('.brand')).not.toBeNull();
+    // Global controls stay: the theme toggle is useful in a webview too.
+    expect(root.querySelector('.themeToggle')).not.toBeNull();
   });
 });

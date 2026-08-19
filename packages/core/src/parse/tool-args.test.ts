@@ -175,7 +175,18 @@ describe('normalizeTargetPath', () => {
   });
 
   it('normalises Windows separators and drive letters', () => {
-    expect(normalizeTargetPath('C:\\Users\\dev\\proj\\src\\a.ts', ['/C/Users/dev/proj'])).toBe(
+    expect(normalizeTargetPath('C:\\Users\\dev\\proj\\src\\a.ts', ['C:/Users/dev/proj'])).toBe(
+      'src/a.ts',
+    );
+  });
+
+  it('matches a raw Windows root (colon + backslashes, as discovered from disk)', () => {
+    expect(normalizeTargetPath('C:\\Users\\dev\\proj\\src\\a.ts', ['C:\\Users\\dev\\proj'])).toBe(
+      'src/a.ts',
+    );
+    // Case from a VS Code file:// URI, decoded to a lowercase drive letter —
+    // must still match a target path with an uppercase drive letter.
+    expect(normalizeTargetPath('C:\\Users\\dev\\proj\\src\\a.ts', ['c:/Users/dev/proj'])).toBe(
       'src/a.ts',
     );
   });

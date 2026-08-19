@@ -3,4 +3,4 @@ import { Simulator } from '@cte/ui';
 import { render } from 'preact';
 
 const root = document.getElementById('app');
-if (root) render(<Simulator navHref="" />, root);
+if (root) render(<Simulator navLinks={[]} />, root);

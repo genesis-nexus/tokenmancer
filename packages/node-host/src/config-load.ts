@@ -6,7 +6,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
   CONFIG_VERSION,
-  DEFAULT_CONFIG,
+  DEFAULT_BUDGET_RULES,
   type PartialConfig,
   type TokenmancerConfig,
   mergeConfig,
@@ -16,6 +16,8 @@ import { atomicWriteJson, configPath, ensureDir, readJsonSafe, tokenmancerHome }
 
 /** Project-scoped config, committable so a repo can carry its own budget. */
 export const PROJECT_CONFIG_NAME = '.tokenmancer.json';
+
+const SCHEMA_URL = `https://tokenmancer.dev/schema/config-v${CONFIG_VERSION}.json`;
 
 export interface LoadConfigOptions {
   /** Directory to look for a project config in. Defaults to process.cwd(). */
@@ -57,6 +59,12 @@ const ENV_MAP: Array<{ env: string; apply: (v: string, into: PartialConfig) => v
     env: 'TOKENMANCER_SHOW_PROMPTS',
     apply: (v, c) => {
       c.privacy = { ...c.privacy, showPrompts: isTruthy(v) };
+    },
+  },
+  {
+    env: 'TOKENMANCER_SHOW_TOOL_QUERIES',
+    apply: (v, c) => {
+      c.privacy = { ...c.privacy, showToolQueries: isTruthy(v) };
     },
   },
   {
@@ -211,7 +219,7 @@ export function saveConfigPatch(patch: PartialConfig, opts: LoadConfigOptions = 
   const existing = readJsonSafe<Record<string, unknown>>(file, {});
   ensureDir(tokenmancerHome());
   atomicWriteJson(file, {
-    $schema: 'https://tokenmancer.dev/schema/config-v1.json',
+    $schema: SCHEMA_URL,
     ...deepMergeRaw(existing, clean as Record<string, unknown>),
   });
 
@@ -220,17 +228,109 @@ export function saveConfigPatch(patch: PartialConfig, opts: LoadConfigOptions = 
 }
 
 /**
- * Write the default config on first run so there is something to edit. Returns
- * the path when it created the file, null when one already existed.
+ * Every default as v1 wrote them. Frozen deliberately: this is a record of what
+ * old files contain, not a second copy of DEFAULT_CONFIG, and it must not move
+ * when the shipped defaults do. Includes the `radar` / `thresholds` /
+ * `cacheEnabled` keys v1 seeded for features that were never implemented.
+ */
+const V1_DEFAULTS: Record<string, unknown> = {
+  version: 1,
+  pricing: { defaultModel: 'claude-sonnet-4.6', poolCredits: 3000, creditUsd: 0.01 },
+  privacy: { showPrompts: false, showPaths: true, exposeAbsolutePaths: false },
+  // Arrays compare whole (JSON.stringify), matching mergeConfig's replace-don't-
+  // concatenate rule: an untouched rule list is dropped, an edited one is kept.
+  budgets: { rules: DEFAULT_BUDGET_RULES },
+  alerts: {
+    enabled: true,
+    cooldownMinutes: 15,
+    maxPerHour: 6,
+    channels: { banner: true, notification: true, statusBar: true },
+  },
+  radar: {
+    enabled: true,
+    loopCredits: 5,
+    loopSteps: 15,
+    toolContextTokens: 5000,
+    repeatReadCount: 3,
+  },
+  thresholds: { highContextRatio: 0.8, shortPromptChars: 40 },
+  analytics: { timeWindowDays: 30, cacheEnabled: true },
+  ui: { defaultDetail: 'simple' },
+};
+
+/**
+ * Drop every leaf that still holds the default it was seeded with. A value the
+ * user genuinely chose that happens to equal the default resolves to the same
+ * thing either way, so this is lossless — it only decides whether the key keeps
+ * tracking future releases.
+ */
+function stripSeededDefaults(
+  node: Record<string, unknown>,
+  defaults: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(node)) {
+    const d = defaults[k];
+    if (isPlainObject(v) && isPlainObject(d)) {
+      const nested = stripSeededDefaults(v, d);
+      if (Object.keys(nested).length) out[k] = nested;
+    } else if (JSON.stringify(v) !== JSON.stringify(d)) {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
+/**
+ * Bring an older config file up to the current schema. Returns the path when it
+ * rewrote something, null when there was nothing to do.
+ *
+ * v1 → v2 exists because v1's seed wrote out the entire default config. That
+ * froze `privacy.showPrompts: false` on every machine that ever started the
+ * meter, so changing the shipped default could not reach an existing user —
+ * their prompts stayed redacted forever. It also left `radar` and `thresholds`
+ * behind for features that were dropped, which the validator now reports as
+ * unknown options on every single load.
+ */
+export function migrateConfigFile(): string | null {
+  const file = configPath();
+  let raw: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!isPlainObject(parsed)) return null;
+    raw = parsed;
+  } catch {
+    // Absent or corrupt. loadConfig already reports corruption as a problem;
+    // a migration must never be the thing that stops the meter starting.
+    return null;
+  }
+  const version = typeof raw.version === 'number' ? raw.version : 1;
+  if (version >= CONFIG_VERSION) return null;
+
+  // validateConfig prunes unknown keys and bad values; strip then removes what
+  // was only ever a copied default. What survives is what the user chose.
+  const { config: known } = validateConfig(raw);
+  const kept = stripSeededDefaults(known as Record<string, unknown>, V1_DEFAULTS);
+
+  // `version` last so it wins over whatever the old file carried.
+  atomicWriteJson(file, { $schema: SCHEMA_URL, ...kept, version: CONFIG_VERSION });
+  return file;
+}
+
+/**
+ * Write a config file on first run so there is something to edit. Returns the
+ * path when it created the file, null when one already existed.
+ *
+ * The seed is deliberately near-empty. Writing out every default looks helpful
+ * but pins them: a key present in the file stops tracking DEFAULT_CONFIG, so
+ * the user is frozen at whatever shipped the day they first ran the meter —
+ * exactly the trap v1 fell into. `$schema` carries the discoverability instead.
  */
 export function ensureConfigFile(): string | null {
   const file = configPath();
   if (fs.existsSync(file)) return null;
   ensureDir(tokenmancerHome());
-  const seed = {
-    $schema: 'https://tokenmancer.dev/schema/config-v1.json',
-    ...DEFAULT_CONFIG,
-  };
+  const seed = { $schema: SCHEMA_URL, version: CONFIG_VERSION };
   fs.writeFileSync(file, `${JSON.stringify(seed, null, 2)}\n`, 'utf8');
   return file;
 }

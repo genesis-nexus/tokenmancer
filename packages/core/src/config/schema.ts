@@ -9,7 +9,12 @@
 
 import type { BudgetRule } from '../budget/types.js';
 
-export const CONFIG_VERSION = 1;
+/**
+ * 2 — v1 seed files serialised *every* default into the config file, which
+ * pinned values the user never chose and stopped them tracking later releases.
+ * See `migrateConfigFile` in @cte/node-host.
+ */
+export const CONFIG_VERSION = 2;
 
 export interface PricingConfig {
   /** Fallback model when a log record carries no model id. */
@@ -21,8 +26,19 @@ export interface PricingConfig {
 }
 
 export interface PrivacyConfig {
-  /** When false, prompt text and tool queries are redacted before they leave the parser. */
+  /**
+   * When false, prompt text is replaced with an opaque `‹redacted abc123›` tag.
+   * Defaults to true: the prompt is how you tell one loop from another, and it
+   * is your own text, on your own machine, in a tool that uploads nothing.
+   * Turn it off for screenshares and demos.
+   */
   showPrompts: boolean;
+  /**
+   * Shell command heads and search strings (`StepEvent.toolQuery`). Held to a
+   * stricter default than prompts because a command line is where a token or a
+   * connection string ends up pasted, and you rarely reread one on purpose.
+   */
+  showToolQueries: boolean;
   /** When false, only repo-relative tool targets are reported; absolute ones are dropped. */
   showPaths: boolean;
   /** When false, workspace filesystem paths are withheld from the workspace list. */
@@ -117,7 +133,8 @@ export const DEFAULT_CONFIG: TokenmancerConfig = {
     creditUsd: 0.01,
   },
   privacy: {
-    showPrompts: false,
+    showPrompts: true,
+    showToolQueries: false,
     showPaths: true,
     exposeAbsolutePaths: false,
   },

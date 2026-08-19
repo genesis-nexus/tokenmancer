@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as http from 'node:http';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import type { MeterEvent, StepEvent } from '@cte/core';
+import { DEFAULT_CONFIG, type MeterEvent, type StepEvent } from '@cte/core';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { ServerOptions } from './security.js';
 import { type RunningServer, startServer } from './server.js';
@@ -34,7 +34,7 @@ async function start(over: Partial<ServerOptions>): Promise<RunningServer> {
     port: 0,
     host: '127.0.0.1',
     token: 'tkn-test',
-    showPrompts: false,
+    showPrompts: DEFAULT_CONFIG.privacy.showPrompts,
     exposePaths: false,
     tail: null,
     inbox: makeInbox(`${Math.random().toString(36).slice(2)}.jsonl`),
@@ -154,22 +154,27 @@ describe('hardened local-first server', () => {
     expect(html).toContain(`{token:${JSON.stringify(s.token)}}`);
   });
 
-  it('redacts prompt text by default over SSE, but keeps counts + cost', async () => {
+  it('carries prompt text over SSE by default, with counts + cost', async () => {
     const s = await start({});
     const evs = await readSse(s.url, s.token);
     const step = evs.find((e): e is StepEvent => e.kind === 'step');
     expect(step).toBeDefined();
-    expect(JSON.stringify(evs)).not.toContain('SECRET');
-    expect(step?.userPrompt).toBe('');
-    expect(step?.promptSnippet).toMatch(/redacted/);
+    // End-to-end: parsed → redactor → SSE frame → client. The prompt is the
+    // label the UI groups a loop under, so losing it anywhere on this path
+    // leaves the meter showing anonymous numbers.
+    expect(step?.userPrompt).toBe('SECRET refactor formatPrice');
     // fresh 2000·300 + read 9000·30 + write 1000·375 + out 300·1500, all /1e6
     expect(step?.aic).toBeCloseTo(1.695, 6);
   });
 
-  it('shows prompt text when --show-prompts is set', async () => {
-    const s = await start({ showPrompts: true });
+  it('redacts prompt text when --redact-prompts is set, keeping counts + cost', async () => {
+    const s = await start({ showPrompts: false });
     const evs = await readSse(s.url, s.token);
-    expect(JSON.stringify(evs)).toContain('SECRET');
+    const step = evs.find((e): e is StepEvent => e.kind === 'step');
+    expect(JSON.stringify(evs)).not.toContain('SECRET');
+    expect(step?.userPrompt).toBe('');
+    expect(step?.promptSnippet).toMatch(/redacted/);
+    expect(step?.aic).toBeCloseTo(1.695, 6);
   });
 });
 

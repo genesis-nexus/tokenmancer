@@ -9,3 +9,4 @@ export * from './ledger.js';
 export * from './alert-state.js';
 export * from './config-load.js';
 export * from './budget-runner.js';
+export * from './sources/claude.js';

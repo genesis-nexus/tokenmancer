@@ -93,8 +93,19 @@
       "properties": {
         "tokenmancer.showPrompts": {
           "type": "boolean",
+          "default": true,
+          "description": "Show prompt text in the meter, session replay, and analytics.",
+          "deprecationMessage": "Renamed to tokenmancer.privacy.showPrompts. Your existing value is still honoured."
+        },
+        "tokenmancer.privacy.showPrompts": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show your prompt text in the meter, session replay, and analytics. On by default \u2014 the prompt is how you tell one agent loop from another, and nothing leaves your machine. Turn it off for screenshares, and each loop falls back to an opaque `\u2039redacted a1b2c3\u203a` tag."
+        },
+        "tokenmancer.privacy.showToolQueries": {
+          "type": "boolean",
           "default": false,
-          "description": "Show prompt text and tool commands in the meter, session replay, and analytics. Off by default for privacy \u2014 token counts, costs and file targets are shown either way."
+          "markdownDescription": "Show the shell commands and search strings the agent ran. Off by default: a command line is where a token or connection string tends to get pasted. File targets and costs are reported either way."
         },
         "tokenmancer.budgets.monthlyCredits": {
           "type": ["number", "null"],

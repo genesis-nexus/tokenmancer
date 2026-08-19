@@ -79,6 +79,17 @@ function isRecord(v: unknown): v is Record<string, unknown> {
  * degrades to its basename rather than leaking an absolute path — the redaction
  * layer can then drop it entirely if `showPaths` is off.
  */
+/** Backslashes to forward slashes, and `C:/`/`/c:/` drive letters to `/c/`,
+ *  folding the letter's case — it's a case-insensitive drive label, not a
+ *  filesystem name — so a Windows target path and a Windows repo root
+ *  compare on equal footing regardless of which API produced each string. */
+function normalizeSlashesAndDrive(s: string): string {
+  return s
+    .replace(/\\/g, '/')
+    .replace(/\/{2,}/g, '/')
+    .replace(/^\/?([a-zA-Z]):\//, (_, d: string) => `/${d.toLowerCase()}/`);
+}
+
 export function normalizeTargetPath(raw: string, roots: readonly string[] = []): string {
   let p = raw.trim();
   if (!p) return '';
@@ -91,14 +102,12 @@ export function normalizeTargetPath(raw: string, roots: readonly string[] = []):
       // keep the encoded form rather than dropping the target
     }
   }
-  p = p.replace(/\\/g, '/').replace(/\/{2,}/g, '/');
-  // Windows drive letters: /c:/Users/... or C:/Users/...
-  p = p.replace(/^\/?([a-z]):\//i, '/$1/');
+  p = normalizeSlashesAndDrive(p);
 
   let best = '';
   for (const root of roots) {
     if (!root) continue;
-    const r = `${root.replace(/\\/g, '/').replace(/\/+$/, '')}/`;
+    const r = `${normalizeSlashesAndDrive(root).replace(/\/+$/, '')}/`;
     if (p.startsWith(r) && r.length > best.length) best = r;
   }
   if (best) return p.slice(best.length);

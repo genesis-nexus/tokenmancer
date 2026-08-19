@@ -1,14 +1,21 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
+import {
+  filterWorkspaces,
+  matchesProvider,
+  providerFilter,
+  workspaceLabel,
+} from '../state/provider-store.js';
 import { resetSession } from '../state/store.js';
 import type { MeterTransport, WorkspaceSummary } from '../transport.js';
+import { ProviderFilter } from './ProviderFilter.js';
 
 export function WorkspaceBar({ transport }: { transport: MeterTransport }) {
   const [list, setList] = useState<WorkspaceSummary[]>([]);
   const [selected, setSelected] = useState('');
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState<ComponentChildren>(
-    'Pick any VS Code project on this machine (newest first) to point the meter at its live Copilot log.',
+    'Pick any project on this machine (newest first) to point the meter at its live agent log.',
   );
 
   useEffect(() => {
@@ -20,7 +27,7 @@ export function WorkspaceBar({ transport }: { transport: MeterTransport }) {
         setList(l);
         if (!l.length)
           setMsg(
-            'No VS Code workspaces with Copilot debug logs were found. Enable agent debug logging in VS Code, or use --inbox.',
+            'No agent logs were found. For Copilot, enable agent debug logging in VS Code; Claude Code needs no setup. Or use --inbox.',
           );
       } catch (e) {
         if (alive) setMsg(`Failed to load workspaces: ${(e as Error).message}`);
@@ -33,17 +40,25 @@ export function WorkspaceBar({ transport }: { transport: MeterTransport }) {
     };
   }, [transport]);
 
+  const filter = providerFilter.value;
+  const shown = filterWorkspaces(list, filter);
+
+  // A selection the filter just hid would keep ▶ Tail live enabled while the
+  // select showed a blank — drop it rather than act on something invisible.
+  const chosen = list.find((w) => w.id === selected);
+  const effective = chosen && matchesProvider(chosen, filter) ? selected : '';
+
   async function tail() {
-    if (!selected) return;
-    const w = list.find((x) => x.id === selected);
+    if (!effective) return;
+    const w = list.find((x) => x.id === effective);
     setMsg('Switching live tail…');
     resetSession();
     try {
-      const j = await transport.tailWorkspace(selected);
+      const j = await transport.tailWorkspace(effective);
       setMsg(
         <>
           Now tailing <b>{j.workspace || w?.folderName}</b> · {j.log || 'main.jsonl'} — send an
-          Agent request in VS Code to see it here.
+          agent request to see it here.
         </>,
       );
     } catch (e) {
@@ -53,31 +68,29 @@ export function WorkspaceBar({ transport }: { transport: MeterTransport }) {
 
   return (
     <div class="wsbar">
+      <ProviderFilter workspaces={list} />
       <label for="wsSelect">Workspace</label>
       <select
         id="wsSelect"
-        value={selected}
+        value={effective}
         onChange={(e) => setSelected((e.target as HTMLSelectElement).value)}
       >
         <option value="">
           {loading
             ? 'Loading workspaces…'
-            : list.length
+            : shown.length
               ? 'Select a workspace…'
-              : 'No workspaces with Copilot logs found'}
+              : list.length
+                ? 'No workspaces for this agent'
+                : 'No agent logs found'}
         </option>
-        {list.map((w) => {
-          const chan = w.channel && w.channel !== 'Code' ? ` · ${w.channel}` : '';
-          return (
-            <option value={w.id} key={w.id}>
-              {w.folderName} — {w.modifiedStr} · {w.sessionCount} session
-              {w.sessionCount > 1 ? 's' : ''}
-              {chan}
-            </option>
-          );
-        })}
+        {shown.map((w) => (
+          <option value={w.id} key={w.id}>
+            {workspaceLabel(w, { modified: true })}
+          </option>
+        ))}
       </select>
-      <button type="button" class="btn primary" disabled={!selected} onClick={tail}>
+      <button type="button" class="btn primary" disabled={!effective} onClick={tail}>
         ▶ Tail live
       </button>
       <div class="wsmsg">{msg}</div>

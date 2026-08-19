@@ -6,6 +6,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   type AlertEvent,
+  CONFIG_VERSION,
   type MeterEvent,
   type PartialConfig,
   type TokenmancerConfig,
@@ -19,11 +20,13 @@ import {
   type TailController,
   discoverWorkspaces,
   ensureConfigFile,
+  formatForWorkspace,
   getWorkspaceAnalyticsWithInsights,
   isContained,
   isSafeLogFileName,
   loadConfig,
   loadLogFile,
+  migrateConfigFile,
   resolveLogPath,
   resolveWorkspaceSessions,
   saveConfigPatch,
@@ -135,6 +138,7 @@ export function startServer(opts: StartServerOptions): Promise<RunningServer> {
 
   const redactOpts = {
     showPrompts: config.privacy.showPrompts,
+    showToolQueries: config.privacy.showToolQueries,
     showPaths: config.privacy.showPaths,
     salt: randomBytes(8).toString('hex'),
   };
@@ -385,6 +389,7 @@ export function startServer(opts: StartServerOptions): Promise<RunningServer> {
     if (method === 'GET' && urlPath === '/api/workspaces') {
       const list = discoverWorkspaces().map((w) => ({
         id: w.id,
+        provider: w.provider,
         folderName: w.folderName,
         modifiedStr: w.modifiedStr,
         sessionCount: w.sessionCount,
@@ -425,6 +430,7 @@ export function startServer(opts: StartServerOptions): Promise<RunningServer> {
       const folder = resolveWorkspaceSessions(ws)?.ws.folder;
       const events = loadLogFile(abs, {
         sessionId: session,
+        format: formatForWorkspace(ws),
         defaultModel: config.pricing.defaultModel,
         repoRoots: folder ? [folder] : [],
       }).map((e) => redactEvent(e, redactOpts));
@@ -574,8 +580,11 @@ function openBrowser(url: string): void {
 export async function main(): Promise<void> {
   const { server: opts, overrides } = parseArgs(process.argv.slice(2));
 
-  // Seed a config file on first run so there is something to edit.
+  // Seed a config file on first run so there is something to edit, and bring an
+  // older one forward before reading it — a v1 file pins defaults it only ever
+  // copied, so without this a shipped default change cannot reach the user.
   const created = ensureConfigFile();
+  const migrated = created ? null : migrateConfigFile();
   const { config, sources, problems } = loadConfig({ overrides });
 
   // Ranks ship next to the bundles rather than inside them; load them so
@@ -591,9 +600,10 @@ export async function main(): Promise<void> {
   console.log('GitHub Copilot Tokenmancer — local-first meter');
   console.log(`  ▶ open: ${link}`);
   console.log(
-    `  prompts: ${config.privacy.showPrompts ? 'shown (--show-prompts)' : 'redacted by default'} · paths: ${config.privacy.exposeAbsolutePaths ? 'exposed' : 'hidden'}`,
+    `  prompts: ${config.privacy.showPrompts ? 'shown (--redact-prompts to hide)' : 'redacted'} · tool commands: ${config.privacy.showToolQueries ? 'shown' : 'hidden (--show-tool-queries)'} · paths: ${config.privacy.exposeAbsolutePaths ? 'exposed' : 'hidden'}`,
   );
   if (created) console.log(`  config: created ${created}`);
+  else if (migrated) console.log(`  config: migrated to v${CONFIG_VERSION} → ${migrated}`);
   else console.log(`  config: ${sources.join(' → ')}`);
 
   const budgeted = config.budgets.rules.filter((r) => r.enabled && r.limit > 0);

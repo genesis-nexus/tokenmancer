@@ -11,7 +11,7 @@ See what every GitHub Copilot prompt **really costs** — a live AI-Credit meter
 
 Every prompt fans out into a loop of model calls (plan → read → search → edit → verify). Tokenmancer reads Copilot's own agent debug log and lays each loop out as a priced, step-by-step timeline: which model ran each step, the context window growing call after call, and a cost bar splitting every bill into **cache-read / cache-write / fresh-input / output** — with output, a few hundred tokens, routinely the biggest slice.
 
-Everything runs **on your machine**. Prompt text is **redacted by default**; only token counts and costs leave the parser.
+Everything runs **on your machine** — nothing is uploaded. Your prompt text is shown, because it is the only readable handle on a loop; one flag redacts it for screenshares.
 
 ## Quick start
 
@@ -133,7 +133,7 @@ tools/         scaffold-mfe.js — deterministic demo-repo generator (dev fixtur
 
 ### Security (web app)
 
-Loopback bind (`127.0.0.1`), a per-run token on every data route, `Host`/`Origin` validation (DNS-rebind defense), prompt redaction by default (`--show-prompts` to opt in), workspace paths hidden (`--expose-paths` to opt in), path-traversal guards, request limits, and graceful shutdown. Covered by an automated security suite.
+Loopback bind (`127.0.0.1`), a per-run token on every data route, `Host`/`Origin` validation (DNS-rebind defense), shell commands and search strings blanked by default (`--show-tool-queries` to opt in), prompt redaction available (`--redact-prompts`), workspace paths hidden (`--expose-paths` to opt in), path-traversal guards, request limits, and graceful shutdown. Covered by an automated security suite.
 
 ### What Tokenmancer records about your code
 
@@ -141,7 +141,8 @@ To answer *where did my credits actually go*, the meter reads which files the ag
 
 - **File contents are never read or recorded.** Only the path, and the line range when the tool gave one.
 - **Paths are always repo-relative.** A path outside a known workspace root is reduced to its bare filename before it leaves the parser, and dropped entirely by the redaction layer if it still looks absolute. Set `privacy.showPaths: false` (or `--hide-paths`) to record no paths at all.
-- **Search queries and shell commands follow the prompt, not the paths.** They are blanked unless you pass `--show-prompts`, because a command line leaks intent and occasionally a secret.
+- **Your prompt text is shown by default.** It is your own writing, on your own machine, and without it a loop card is an anonymous pile of token counts — you cannot tell which spend belongs to which request. `--redact-prompts` (or `privacy.showPrompts: false`) swaps each prompt for a stable `‹redacted a1b2c3›` tag, which is what you want on a screenshare.
+- **Search queries and shell commands are a separate, stricter switch.** Blanked unless you pass `--show-tool-queries`, because a command line is where a token or connection string tends to get pasted — and unlike the prompt, nobody needs one to recognise a loop.
 
 ## Development
 

@@ -2,7 +2,12 @@ import { randomBytes } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { type AlertEvent, type TokenmancerConfig, initTokenizer } from '@cte/core';
-import { discoverWorkspaces, ensureConfigFile, loadConfig } from '@cte/node-host';
+import {
+  discoverWorkspaces,
+  ensureConfigFile,
+  loadConfig,
+  migrateConfigFile,
+} from '@cte/node-host';
 import * as vscode from 'vscode';
 import { type BridgeOptions, MeterBridge } from './bridge.js';
 import { checkRequiredSettings, openRequiredSetting } from './settings-check.js';
@@ -81,14 +86,21 @@ function webviewHtml(
 </html>`;
 }
 
+/** Windows drive letters are case-insensitive, so `C:\...` from the VS Code
+ *  API and `c:\...` recovered from a workspace.json URI must still compare
+ *  equal there; POSIX paths are compared exactly. */
+function samePath(a: string, b: string): boolean {
+  const ra = path.resolve(a);
+  const rb = path.resolve(b);
+  return process.platform === 'win32' ? ra.toLowerCase() === rb.toLowerCase() : ra === rb;
+}
+
 /** Resolve the current workspace's Copilot debug-logs dir (the privacy-friendly
  *  default target), matching by folder path and falling back to storage walk. */
 function currentWorkspaceLogsDir(context: vscode.ExtensionContext): string | undefined {
   const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   if (folder) {
-    const match = discoverWorkspaces().find(
-      (w) => w.folder && path.resolve(w.folder) === path.resolve(folder),
-    );
+    const match = discoverWorkspaces().find((w) => w.folder && samePath(w.folder, folder));
     if (match) return match.debugLogsDir;
   }
   const sp = context.storageUri?.fsPath;
@@ -174,6 +186,11 @@ export function activate(context: vscode.ExtensionContext): void {
   }).catch((err) => {
     console.error('tokenmancer: could not load o200k ranks, using estimates', err);
   });
+
+  // A v1 config file pins every default it was seeded with, so a shipped
+  // default change cannot reach anyone who has already run the meter. Migrate
+  // before the first read; it is a no-op once the file is current.
+  migrateConfigFile();
 
   // Activation is now `onStartupFinished`, so this runs in every window. Keep it
   // to one config read: `discoverWorkspaces()` is deferred to the first tail,

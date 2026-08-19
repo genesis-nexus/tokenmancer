@@ -1,4 +1,5 @@
 export { App, type AppProps } from './components/App.js';
+export { AppNav, WEB_NAV, type AppNavProps, type NavLink } from './components/AppNav.js';
 export { Logo, type LogoProps } from './components/Logo.js';
 export { LoopCard } from './components/LoopCard.js';
 export { Readout } from './components/Readout.js';
@@ -9,6 +10,7 @@ export { SettingsBanner } from './components/SettingsBanner.js';
 export { SettingsPanel, SettingsButton } from './components/SettingsPanel.js';
 export { SetupGuide } from './components/SetupGuide.js';
 export { SkillToggle } from './components/SkillToggle.js';
+export { ProviderFilter } from './components/ProviderFilter.js';
 export {
   LearnCard,
   MoreDetail,
@@ -18,7 +20,7 @@ export {
 } from './components/LearnCard.js';
 export { AlertBanner } from './components/AlertBanner.js';
 export { BudgetBar } from './components/BudgetBar.js';
-export { Simulator } from './components/Simulator.js';
+export { Simulator, type SimulatorProps } from './components/Simulator.js';
 export { ThemeToggle } from './components/ThemeToggle.js';
 export { TooltipLayer, ttAttr } from './components/TooltipLayer.js';
 export * from './components/Analytics/index.js';
@@ -39,5 +41,6 @@ export * from './state/analytics-store.js';
 export * from './state/theme-store.js';
 export * from './state/budget-store.js';
 export * from './state/skill-store.js';
+export * from './state/provider-store.js';
 export * from './format.js';
 export * from './pricing-ui.js';

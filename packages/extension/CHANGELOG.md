@@ -34,6 +34,8 @@ First public release.
 
 ### Privacy
 
-Everything runs locally. Prompt text and tool queries are redacted by default
-(`tokenmancer.showPrompts`), and absolute paths are withheld — Tokenmancer reports
-*which* files the agent read, never their contents.
+Everything runs locally. Your prompt text is shown — it is the only readable handle
+on an agent loop — and `tokenmancer.privacy.showPrompts` turns it off for
+screenshares. Shell commands and search strings are a separate, stricter switch
+(`tokenmancer.privacy.showToolQueries`) and are blanked by default. Absolute paths
+are withheld: Tokenmancer reports *which* files the agent read, never their contents.

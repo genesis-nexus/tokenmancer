@@ -59,7 +59,11 @@ All under `tokenmancer.*` — pool size and default model, the monthly budget, a
 
 Everything runs in the extension host; no data leaves your machine.
 
-Prompt text and tool queries are **redacted by default** — turn them on with `tokenmancer.showPrompts` if you want them on screen. Tokenmancer reports **which** files the agent read, never their contents, and absolute paths are withheld unless you ask for them.
+**Your prompt text is shown** — it is how you tell one loop from another, and it never leaves the extension host. Set `tokenmancer.privacy.showPrompts` to `false` before a screenshare and each loop falls back to an opaque `‹redacted a1b2c3›` tag.
+
+**Shell commands and search strings are blanked by default** (`tokenmancer.privacy.showToolQueries`), because a command line is where a token or connection string tends to get pasted.
+
+Tokenmancer reports **which** files the agent read, never their contents, and absolute paths are withheld unless you ask for them.
 
 ## Requires
 

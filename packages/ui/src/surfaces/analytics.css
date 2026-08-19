@@ -48,6 +48,12 @@
   --an-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
   --an-shadow-lift: 0 4px 16px rgba(0, 0, 0, 0.45);
   --an-radius: 12px;
+
+  /* Widen the shared shell (theme.css) to this surface's measure: the 1200px
+     dashboard plus the 1.75rem gutter its <main> already carries, so the app
+     bar and the head above sit on the dashboard's own edges. */
+  --shell-max: 1256px;
+  --shell-pad: 1.75rem;
 }
 
 @media (prefers-color-scheme: light) {
@@ -141,38 +147,53 @@ body {
   font-family: var(--sans, system-ui, -apple-system, "Segoe UI", sans-serif);
 }
 
-.analytics-view-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1.15rem 1.75rem;
-  border-bottom: 1px solid var(--an-line);
-  background: var(--an-surface);
-  flex-wrap: wrap;
-  gap: 1rem;
+/* Holds the shared .pageHead to this surface's own measure — the dashboard
+   below is wider than the meter, and the head has to line up with it. */
+.analytics-view-head {
+  width: 100%;
+  max-width: var(--shell-max);
+  margin: 0 auto;
+  padding: 0 var(--shell-pad);
 }
 
-/* The mark leads the header. It takes its hood colour from the analytics ink
-   token rather than theme.css's, so it tracks this surface's own palette. */
-.analytics-view-brand {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  min-width: 0;
+/* The head takes its ink from the analytics token set rather than theme.css's,
+   so it tracks this surface's own palette. */
+.analytics-view-head h1 {
   color: var(--an-ink);
 }
 
-.analytics-view-title h1 {
-  margin: 0;
-  font-size: 1.05rem;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-  color: var(--an-ink);
-}
-
-.analytics-view-subtitle {
-  font-size: 0.8rem;
+.analytics-view-head .sub {
   color: var(--an-muted);
+}
+
+.providerFilter {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  margin: 0 0.25rem 0 0;
+  border: 1px solid var(--an-line);
+  border-radius: 999px;
+  background: var(--an-surface2, var(--an-surface));
+}
+.providerOpt {
+  border: 0;
+  background: none;
+  color: var(--an-muted);
+  font: inherit;
+  font-size: 0.7rem;
+  line-height: 1;
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.providerOpt:hover {
+  color: var(--an-ink);
+}
+.providerOpt.on {
+  background: var(--an-bg, var(--an-surface));
+  color: var(--an-ink);
+  font-weight: 600;
 }
 
 .workspace-selector {
@@ -202,12 +223,15 @@ body {
 }
 
 .analytics-view-notice {
-  padding: 1rem 1.75rem 0;
+  width: 100%;
+  max-width: var(--shell-max);
+  margin: 0 auto;
+  padding: 0 var(--shell-pad) 1rem;
 }
 
 .analytics-view-main {
   flex: 1;
-  padding: 1.75rem;
+  padding: 0.5rem 1.75rem 1.75rem;
   overflow-y: auto;
 }
 
@@ -1137,15 +1161,13 @@ body {
 /* ------------------------------------------------------------ responsive -- */
 
 @media (max-width: 768px) {
-  .analytics-view-header,
+  :root {
+    --shell-pad: 1rem;
+  }
+
   .analytics-view-main {
     padding-left: 1rem;
     padding-right: 1rem;
-  }
-
-  .analytics-view-header {
-    flex-direction: column;
-    align-items: flex-start;
   }
 
   .workspace-selector {

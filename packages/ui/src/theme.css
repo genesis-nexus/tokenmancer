@@ -31,6 +31,12 @@
      meaning. */
   --brand-eye: #9eff3d;
   --brand-mouth: #5b922a;
+
+  /* Shell geometry, so the static header lines up with whatever content width
+     the surface below it uses. Surfaces that are wider than the meter (the
+     analytics dashboard) override these in their own stylesheet. */
+  --shell-max: 980px;
+  --shell-pad: 20px;
 }
 
 @media (prefers-color-scheme: light) {
@@ -89,9 +95,9 @@ body {
   transition: background-color .15s ease, color .15s ease;
 }
 .wrap {
-  max-width: 980px;
+  max-width: var(--shell-max);
   margin: 0 auto;
-  padding: 0 20px 72px;
+  padding: 0 var(--shell-pad) 72px;
 }
 
 /* ── Brand mark ──────────────────────────────────────────────────────────
@@ -112,44 +118,128 @@ body {
   stroke: var(--brand-eye);
 }
 
-/* masthead */
-.mast {
+/* ── App bar ─────────────────────────────────────────────────────────────
+   The one piece of chrome every surface shares: brand, the four destinations,
+   and the controls that act on the whole app. It is deliberately the only
+   place navigation lives — view-scoped controls go in .pageHead below, so the
+   two never compete for the same corner of the screen.
+
+   Sticky, because the reason to switch views usually arrives halfway down a
+   long feed. */
+.appbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.appbarInner {
+  display: flex;
+  align-items: center;
+  gap: 8px 20px;
+  max-width: var(--shell-max);
+  margin: 0 auto;
+  padding: 0 var(--shell-pad);
+  min-height: 50px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  color: var(--ink);
+  text-decoration: none;
+}
+.brand .tmLogo {
+  color: var(--ink);
+}
+.brandName {
+  font-size: 13.5px;
+  font-weight: 650;
+  letter-spacing: -.01em;
+}
+.brand:focus-visible {
+  outline: 2px solid var(--read);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* Scrolls rather than wraps on narrow viewports: a tab row that reflows moves
+   the destination out from under the pointer between visits. */
+.mainNav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  margin-right: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.mainNav::-webkit-scrollbar {
+  display: none;
+}
+a.navTab {
+  padding: 6px 10px;
+  border-radius: 7px;
+  color: var(--muted);
+  font-size: 12.5px;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background .15s ease, color .15s ease;
+}
+a.navTab:hover {
+  color: var(--ink);
+  background: var(--surface2);
+}
+a.navTab.on {
+  color: var(--ink);
+  background: var(--surface2);
+  font-weight: 600;
+}
+a.navTab:focus-visible {
+  outline: 2px solid var(--read);
+  outline-offset: -2px;
+}
+.appbarActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  flex: none;
+}
+
+/* ── Page head ───────────────────────────────────────────────────────────
+   What this view is, and only the controls that change this view. */
+.pageHead {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 16px;
-  padding: 26px 0 14px;
+  gap: 12px 20px;
+  padding: 22px 0 14px;
   flex-wrap: wrap;
 }
-/* The mark sits beside the title block rather than above it, so the surface
-   name stays the first thing read. */
-.mastLeft {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
+.pageTitle {
   min-width: 0;
 }
-.mastLeft .tmLogo {
-  margin-top: 1px;
-  color: var(--ink);
-}
-.mast h1 {
+.pageHead h1 {
   font-size: 17px;
   font-weight: 600;
   color: var(--ink);
   margin: 0;
   letter-spacing: -.01em;
 }
-.mast .sub {
+.pageHead .sub {
   margin: 2px 0 0;
   color: var(--muted);
   font-size: 12.5px;
+  max-width: 70ch;
 }
-.mastRight {
+.pageActions {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding-top: 3px;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 2px;
 }
 .conn {
   display: inline-flex;
@@ -170,15 +260,24 @@ body {
 .dot.down {
   background: var(--crit);
 }
-a.navlink {
-  color: var(--ink2);
-  font-size: 12px;
-  text-decoration: none;
-  border-bottom: 1px solid var(--line);
-}
-a.navlink:hover {
-  color: var(--ink);
-  border-color: var(--ink2);
+/* Below this width the three groups no longer fit on one line. The tab row
+   drops to its own full-width line rather than shrinking, so brand and global
+   actions keep their corners. */
+@media (max-width: 720px) {
+  .appbarInner {
+    flex-wrap: wrap;
+    padding-top: 9px;
+    padding-bottom: 9px;
+  }
+  .mainNav {
+    order: 3;
+    width: 100%;
+    margin-right: 0;
+    margin-left: -6px;
+  }
+  .pageHead {
+    padding-top: 18px;
+  }
 }
 
 .themeToggle {
@@ -1339,6 +1438,46 @@ input[type="range"] {
   white-space: nowrap;
   border: 0;
 }
+/* Provider filter — the same segmented control as the detail toggle, because
+   it does the same job: name two states neither of which is obvious from the
+   screen. Sized down a touch; it sits inside the workspace bar, not a masthead. */
+.providerFilter {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface2);
+  flex: 0 0 auto;
+}
+.providerOpt {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 10.5px;
+  line-height: 1;
+  padding: 5px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.providerOpt:hover {
+  color: var(--ink);
+}
+.providerOpt.on {
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+}
+.providerOpt:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .skillToggle {
   display: inline-flex;
   gap: 2px;

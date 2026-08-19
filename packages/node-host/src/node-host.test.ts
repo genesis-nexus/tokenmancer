@@ -4,7 +4,13 @@ import * as path from 'node:path';
 import type { MeterEvent, StepEvent } from '@cte/core';
 import { newInstructionAccumulator } from '@cte/core';
 import { afterAll, describe, expect, it } from 'vitest';
-import { discoverSessionsIn, isContained, isSafeLogFileName, resolveLogPath } from './discover.js';
+import {
+  discoverSessionsIn,
+  isContained,
+  isSafeLogFileName,
+  readWorkspaceMeta,
+  resolveLogPath,
+} from './discover.js';
 import { watchInbox } from './inbox.js';
 import { measureInstructionFiles } from './instrument.js';
 import { loadLogFile } from './load.js';
@@ -36,6 +42,29 @@ describe('discoverSessionsIn', () => {
     expect(sessions[0]?.id).toBe('main');
     expect(sessions[0]?.logFiles).toContain('main.jsonl');
     expect(sessions[0]?.events).toBe(2);
+  });
+});
+
+describe('readWorkspaceMeta', () => {
+  function withWorkspaceJson(folder: string): string {
+    const dir = fs.mkdtempSync(path.join(tmp, 'wsmeta-'));
+    fs.writeFileSync(path.join(dir, 'workspace.json'), JSON.stringify({ folder }));
+    return dir;
+  }
+
+  it('decodes a macOS/Linux file:// URI as-is', () => {
+    const dir = withWorkspaceJson('file:///Users/dev/my-project');
+    const meta = readWorkspaceMeta(dir);
+    expect(meta.folder).toBe('/Users/dev/my-project');
+    expect(meta.folderName).toBe('my-project');
+  });
+
+  it('strips the leading slash VS Code puts before a Windows drive letter', () => {
+    // What VS Code actually writes for C:\Users\dev\my-project.
+    const dir = withWorkspaceJson('file:///c%3A/Users/dev/my-project');
+    const meta = readWorkspaceMeta(dir);
+    expect(meta.folder).toBe('c:/Users/dev/my-project');
+    expect(meta.folderName).toBe('my-project');
   });
 });
 

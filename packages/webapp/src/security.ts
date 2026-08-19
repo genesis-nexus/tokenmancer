@@ -5,7 +5,7 @@ export interface ServerOptions {
   port: number;
   host: string;
   token: string;
-  /** When false (default), prompt text is redacted before it leaves the process. */
+  /** When false (`--redact-prompts`), prompt text is redacted before it leaves the process. */
   showPrompts: boolean;
   /** When false (default), absolute project paths are withheld from /api/workspaces. */
   exposePaths: boolean;
@@ -36,7 +36,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     port: 7878,
     host: '127.0.0.1',
     token: randomUUID(),
-    showPrompts: false,
+    showPrompts: DEFAULT_CONFIG.privacy.showPrompts,
     exposePaths: false,
     tail: null,
     inbox: null,
@@ -71,8 +71,14 @@ export function parseArgs(argv: string[]): ParsedArgs {
       opt.rateModel = argv[++i] ?? opt.rateModel;
       overrides.pricing = { ...overrides.pricing, defaultModel: opt.rateModel };
     } else if (a === '--show-prompts') {
+      // Now the default. Kept so existing scripts and docs don't start erroring.
       opt.showPrompts = true;
       overrides.privacy = { ...overrides.privacy, showPrompts: true };
+    } else if (a === '--redact-prompts') {
+      opt.showPrompts = false;
+      overrides.privacy = { ...overrides.privacy, showPrompts: false };
+    } else if (a === '--show-tool-queries') {
+      overrides.privacy = { ...overrides.privacy, showToolQueries: true };
     } else if (a === '--expose-paths') {
       opt.exposePaths = true;
       overrides.privacy = { ...overrides.privacy, exposeAbsolutePaths: true };

@@ -9,7 +9,7 @@ describe('interactive simulator', () => {
   it('tokenizes input live and computes a credit cost that reacts to output', async () => {
     const root = document.createElement('div');
     document.body.appendChild(root);
-    render(<Simulator navHref="" />, root);
+    render(<Simulator navLinks={[]} />, root);
     await tick();
 
     // hero credit value renders

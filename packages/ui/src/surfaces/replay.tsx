@@ -18,10 +18,7 @@ if (root)
       subscribe={false}
       showConnection={false}
       sourceBar={<SessionBrowser transport={transport} />}
-      navLinks={[
-        { href: '/', text: '← Live meter' },
-        { href: '/simulator', text: 'What-if simulator →' },
-      ]}
+      navCurrent="/sessions"
       emptyText="Pick a workspace and a session above, then Replay to re-open a recorded run here."
     />,
     root,

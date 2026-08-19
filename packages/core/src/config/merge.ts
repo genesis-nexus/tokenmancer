@@ -40,6 +40,7 @@ const SPEC: Group = {
   },
   privacy: {
     showPrompts: { t: 'bool' },
+    showToolQueries: { t: 'bool' },
     showPaths: { t: 'bool' },
     exposeAbsolutePaths: { t: 'bool' },
   },

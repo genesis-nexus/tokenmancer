@@ -3,6 +3,7 @@ import type {
   BudgetRule,
   MeterEvent,
   PartialConfig,
+  ProviderId,
   SpendSnapshot,
   TokenmancerConfig,
   WorkspaceAnalytics,
@@ -11,6 +12,8 @@ import type { ConnState } from './state/store.js';
 
 export interface WorkspaceSummary {
   id: string;
+  /** Which meter this workspace feeds; decides the unit and the setup copy. */
+  provider: ProviderId;
   folderName: string;
   modifiedStr: string;
   sessionCount: number;

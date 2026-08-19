@@ -6,6 +6,7 @@
 
 import type { AlertSeverity, BudgetPeriod } from '../budget/types.js';
 import type { ToolIntent } from '../parse/tool-args.js';
+import type { ProviderId } from '../pricing/provider.js';
 
 export type StepKind = 'plan' | 'read' | 'search' | 'edit' | 'tool' | 'verify' | 'chat' | 'llm';
 
@@ -27,6 +28,8 @@ export interface StepEvent {
   userPrompt: string;
 
   // --- classification ---
+  /** Which meter produced this step. Decides the unit `cost` is denominated in. */
+  provider: ProviderId;
   model: string;
   requestType: string;
   toolName: string;
@@ -47,11 +50,26 @@ export interface StepEvent {
   prompt: number;
   completion: number;
   cacheRead: number;
+  /** Total cache-write tokens. Always authoritative. */
   cacheWrite: number;
+  /**
+   * Optional breakdown of `cacheWrite` by TTL, which Anthropic prices differently
+   * (5-minute 1.25x input, 1-hour 2x). Both 0 when the provider does not report a
+   * split — read `cacheWrite` for the total, never these two summed.
+   */
+  cacheWrite5m: number;
+  cacheWrite1h: number;
   freshInput: number;
 
   // --- cost ---
+  /**
+   * Cost in hundredths of a US dollar. Named for Copilot's AI-Credit, which is
+   * *defined* as $0.01 — so the same number is a credit count for Copilot and a
+   * cent count for Claude, and a credit-denominated budget spans both correctly.
+   */
   aic: number;
+  /** The canonical cost axis. Always populated; `aic` is this times 100. */
+  usd: number;
   /** true = number came straight from the log; false = rate-table estimate. */
   exact: boolean;
 

@@ -5,13 +5,14 @@
 import * as path from 'node:path';
 import {
   type AnalyticsInsight,
+  type LogFormat,
   type SessionMetrics,
   type WorkspaceAnalytics,
   computeSessionMetrics,
   computeWorkspaceAnalytics,
   generateInsights,
 } from '@cte/core';
-import { type SessionInfo, type WorkspaceInfo, discoverSessionsIn } from './discover.js';
+import { type SessionInfo, type WorkspaceInfo, sessionsForWorkspace } from './discover.js';
 import { loadLogFile } from './load.js';
 
 export interface LoadAnalyticsOptions {
@@ -23,6 +24,8 @@ export interface LoadAnalyticsOptions {
   onError?: (e: unknown) => void;
   /** Progress callback (sessionIndex, totalSessions). */
   onProgress?: (current: number, total: number) => void;
+  /** Transcript dialect. Defaults to Copilot; set from the workspace's provider. */
+  format?: LogFormat;
 }
 
 /**
@@ -35,7 +38,7 @@ export function loadWorkspaceAnalytics(
   const { timeWindowDays = 30, defaultModel, onError, onProgress } = options;
 
   // Discover all sessions in the workspace
-  const sessionInfos = discoverSessionsIn(workspace.debugLogsDir);
+  const sessionInfos = sessionsForWorkspace(workspace);
 
   if (sessionInfos.length === 0) {
     return computeWorkspaceAnalytics(workspace.id, workspace.folderName, [], timeWindowDays);
@@ -50,7 +53,11 @@ export function loadWorkspaceAnalytics(
     onProgress?.(i + 1, sessionInfos.length);
 
     try {
-      const metrics = loadSessionMetrics(info, { defaultModel, onError });
+      const metrics = loadSessionMetrics(info, {
+        defaultModel,
+        onError,
+        format: workspace.provider,
+      });
       if (metrics.stepCount > 0) {
         sessionMetrics.push(metrics);
       }
@@ -72,9 +79,9 @@ export function loadWorkspaceAnalytics(
  */
 export function loadSessionMetrics(
   session: SessionInfo,
-  options: Pick<LoadAnalyticsOptions, 'defaultModel' | 'onError'> = {},
+  options: Pick<LoadAnalyticsOptions, 'defaultModel' | 'onError' | 'format'> = {},
 ): SessionMetrics {
-  const { defaultModel, onError } = options;
+  const { defaultModel, onError, format } = options;
 
   // Load all log files for this session
   const allEvents = [];
@@ -82,6 +89,7 @@ export function loadSessionMetrics(
     const absPath = path.join(session.logDir, logFile);
     const events = loadLogFile(absPath, {
       sessionId: session.id,
+      format,
       defaultModel,
       onError,
     });

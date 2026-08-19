@@ -2,13 +2,14 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import type { AlertEvent, PartialConfig, StepEvent, TokenmancerConfig } from '@cte/core';
-import { mergeConfig } from '@cte/core';
+import { CONFIG_VERSION, mergeConfig } from '@cte/core';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { BudgetRunner } from './budget-runner.js';
 import {
   PROJECT_CONFIG_NAME,
   ensureConfigFile,
   loadConfig,
+  migrateConfigFile,
   saveConfigPatch,
 } from './config-load.js';
 import { readSpend } from './ledger.js';
@@ -38,6 +39,7 @@ function step(over: Partial<StepEvent> = {}): StepEvent {
     promptGroupIndex: 1,
     stepIndex: 1,
     userPrompt: 'p',
+    provider: 'copilot',
     model: 'claude-sonnet-4.6',
     requestType: 'request',
     toolName: '',
@@ -51,8 +53,11 @@ function step(over: Partial<StepEvent> = {}): StepEvent {
     completion: 100,
     cacheRead: 0,
     cacheWrite: 0,
+    cacheWrite5m: 0,
+    cacheWrite1h: 0,
     freshInput: 1000,
     aic: 1,
+    usd: 0.01,
     exact: true,
     promptSnippet: '',
     systemPromptFile: '',
@@ -318,14 +323,81 @@ describe('loadConfig', () => {
     expect(loadConfig({ cwd: tmp }).config.privacy.showPrompts).toBe(false);
   });
 
-  it('ensureConfigFile seeds defaults once, then leaves them alone', () => {
+  it('ensureConfigFile seeds a SPARSE file once, then leaves it alone', () => {
     expect(ensureConfigFile()).toBe(configPath());
     const written = JSON.parse(fs.readFileSync(configPath(), 'utf8'));
     expect(written.$schema).toBeTruthy();
-    expect(written.pricing.poolCredits).toBe(3000);
+    // The v1 seed wrote every default out, which pinned them: the key was then
+    // present in the file and stopped tracking DEFAULT_CONFIG forever.
+    expect(Object.keys(written).sort()).toEqual(['$schema', 'version']);
+    expect(loadConfig({ cwd: tmp }).config.pricing.poolCredits).toBe(3000);
     // $schema must not become a validation problem on the next load
     expect(loadConfig({ cwd: tmp }).problems).toEqual([]);
     expect(ensureConfigFile()).toBeNull();
+  });
+});
+
+describe('migrateConfigFile (v1 → v2)', () => {
+  /** A file exactly as v1's ensureConfigFile wrote it. */
+  function seedV1(extra: Record<string, unknown> = {}): void {
+    fs.mkdirSync(tmp, { recursive: true });
+    fs.writeFileSync(
+      configPath(),
+      JSON.stringify({
+        $schema: 'https://tokenmancer.dev/schema/config-v1.json',
+        version: 1,
+        pricing: { defaultModel: 'claude-sonnet-4.6', poolCredits: 3000, creditUsd: 0.01 },
+        privacy: { showPrompts: false, showPaths: true, exposeAbsolutePaths: false },
+        radar: { enabled: true, loopCredits: 5 },
+        thresholds: { highContextRatio: 0.8, shortPromptChars: 40 },
+        analytics: { timeWindowDays: 30, cacheEnabled: true },
+        ui: { defaultDetail: 'simple' },
+        ...extra,
+      }),
+    );
+  }
+
+  it('unpins a copied default so it tracks the shipped one again', () => {
+    seedV1();
+    // The bug this migration exists for: v1 froze `showPrompts: false` on every
+    // machine that ever started the meter, so flipping the default could not
+    // reach an existing user and their prompts stayed redacted forever.
+    expect(loadConfig({ cwd: tmp }).config.privacy.showPrompts).toBe(false);
+    expect(migrateConfigFile()).toBe(configPath());
+    expect(loadConfig({ cwd: tmp }).config.privacy.showPrompts).toBe(true);
+  });
+
+  it('keeps a value the user actually changed', () => {
+    seedV1({ pricing: { defaultModel: 'gpt-5', poolCredits: 9000, creditUsd: 0.01 } });
+    migrateConfigFile();
+    const { config } = loadConfig({ cwd: tmp });
+    expect(config.pricing.poolCredits).toBe(9000);
+    expect(config.pricing.defaultModel).toBe('gpt-5');
+    // creditUsd matched the default, so it is dropped and tracks again.
+    const written = JSON.parse(fs.readFileSync(configPath(), 'utf8'));
+    expect(written.pricing).toEqual({ defaultModel: 'gpt-5', poolCredits: 9000 });
+  });
+
+  it('drops keys for features that no longer exist, silencing the load', () => {
+    seedV1();
+    expect(loadConfig({ cwd: tmp }).problems.length).toBeGreaterThan(0);
+    migrateConfigFile();
+    expect(loadConfig({ cwd: tmp }).problems).toEqual([]);
+    const written = JSON.parse(fs.readFileSync(configPath(), 'utf8'));
+    expect(written.radar).toBeUndefined();
+    expect(written.thresholds).toBeUndefined();
+    expect(written.version).toBe(CONFIG_VERSION);
+  });
+
+  it('is idempotent, and a no-op on a missing or corrupt file', () => {
+    seedV1();
+    expect(migrateConfigFile()).toBe(configPath());
+    expect(migrateConfigFile()).toBeNull();
+
+    fs.writeFileSync(configPath(), '{ not json');
+    expect(migrateConfigFile()).toBeNull();
+    fs.rmSync(configPath(), { force: true });
+    expect(migrateConfigFile()).toBeNull();
   });
 });
 
