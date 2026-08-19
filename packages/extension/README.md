@@ -2,6 +2,8 @@
 
 See what every AI coding prompt **really costs** — a live AI-Credit meter, budgets, workspace analytics and a what-if simulator, inside VS Code.
 
+**Homepage:** https://genesis-nexus.github.io/tokenmancer/
+
 Every prompt you send fans out into a loop of model calls (plan → read → search → edit → verify). Tokenmancer reads Copilot's own agent debug log and lays each loop out as a priced, step-by-step timeline: which model ran each step, the context window growing call after call, and a cost bar splitting every bill into cache-read / cache-write / fresh-input / output — with output, a few hundred tokens, routinely the biggest slice.
 
 Everything runs on your machine. Nothing is uploaded.

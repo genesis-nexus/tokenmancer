@@ -4,6 +4,11 @@
   "private": true,
   "description": "Measure and visualize GitHub Copilot token/AI-Credit economics — local-first web app + VS Code extension.",
   "license": "MIT",
+  "homepage": "https://genesis-nexus.github.io/tokenmancer/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/genesis-nexus/tokenmancer"
+  },
   "type": "module",
   "engines": {
     "node": ">=20"

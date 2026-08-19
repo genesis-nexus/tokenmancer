@@ -1,6 +1,10 @@
 <p align="center">
-  <img src="assets/brand/tokenmancer-lockup.png" alt="Tokenmancer — spend less, ship more" width="560">
+  <a href="https://genesis-nexus.github.io/tokenmancer/">
+    <img src="assets/brand/tokenmancer-lockup.png" alt="Tokenmancer — spend less, ship more" width="560">
+  </a>
 </p>
+
+<p align="center"><a href="https://genesis-nexus.github.io/tokenmancer/"><b>genesis-nexus.github.io/tokenmancer</b></a></p>
 
 # GitHub Copilot Tokenmancer
 
