@@ -2,6 +2,8 @@
 
 A local-first meter that prices every GitHub Copilot agent step (AI-Credits), live from the debug log. Runs entirely on your machine — the browser is just the UI.
 
+**Homepage:** https://genesis-nexus.github.io/tokenmancer/
+
 ```bash
 npx tokenmancer --open
 ```
