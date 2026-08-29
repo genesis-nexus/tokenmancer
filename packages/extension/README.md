@@ -10,14 +10,15 @@ Everything runs on your machine. Nothing is uploaded.
 
 ## Setup
 
-Tokenmancer reads a log Copilot only writes when you ask it to. Add these to your VS Code settings, then reload the window:
+Tokenmancer reads a log Copilot only writes when you ask it to. Add this to your VS Code settings, then reload the window:
 
 ```json
-"github.copilot.chat.agentDebugLog.enabled": true,
 "github.copilot.chat.agentDebugLog.fileLogging.enabled": true
 ```
 
-Send an Agent request, then open the **Tokenmancer** view in the activity bar. If either setting is off, the view says so and offers to jump you to it.
+(An older `github.copilot.chat.agentDebugLog.enabled` setting is deprecated as of Copilot Chat 0.48 and does nothing on its own now — GitHub folded it into the setting above. If your Settings UI search hides it, edit `settings.json` directly, or run **Preferences: Open User Settings (JSON)** from the Command Palette.)
+
+Send an Agent request, then open the **Tokenmancer** view in the activity bar. If the setting is off, the view says so and offers to jump you to it.
 
 ## What you get
 

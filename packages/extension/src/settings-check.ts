@@ -11,21 +11,17 @@ interface RequiredSetting {
   label: string;
 }
 
-// Without these, Copilot's agent debug log either isn't written at all or is
-// missing the user_message records Tokenmancer needs to show prompt text and
-// group steps into loops — see README "Quick start".
+// Without this, Copilot's agent debug log isn't written at all, so Tokenmancer
+// has nothing to read — see README "Setup". `agentDebugLog.enabled` (no
+// `fileLogging`) used to be a second required setting, but GitHub folded it
+// into this one and deprecated it as of Copilot Chat 0.48 — it's a no-op now,
+// so it's no longer checked here even though old README copies still mention it.
 const REQUIRED_SETTINGS: RequiredSetting[] = [
-  {
-    key: 'github.copilot.chat.agentDebugLog.enabled',
-    section: 'github.copilot.chat',
-    prop: 'agentDebugLog.enabled',
-    label: 'Copilot agent debug log',
-  },
   {
     key: 'github.copilot.chat.agentDebugLog.fileLogging.enabled',
     section: 'github.copilot.chat',
     prop: 'agentDebugLog.fileLogging.enabled',
-    label: 'Debug log file logging',
+    label: 'Copilot agent debug log',
   },
 ];
 

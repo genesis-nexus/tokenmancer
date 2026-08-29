@@ -1,7 +1,7 @@
 {
   "name": "tokenmancer",
   "displayName": "Tokenmancer",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "private": true,
   "description": "See what every AI coding prompt really costs \u2014 a live AI-Credit meter, session replay, and a what-if simulator, right inside your editor.",
   "license": "MIT",

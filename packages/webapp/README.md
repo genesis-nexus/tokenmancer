@@ -34,8 +34,9 @@ Tokenmancer records **which** repo-relative files the agent touched, never their
 Enable Copilot's agent debug log in VS Code settings:
 
 ```json
-"github.copilot.chat.agentDebugLog.enabled": true,
 "github.copilot.chat.agentDebugLog.fileLogging.enabled": true
 ```
+
+(The older `agentDebugLog.enabled` setting is deprecated as of Copilot Chat 0.48 and folded into the one above.)
 
 Loopback-only, token-gated, shell commands blanked by default, zero runtime dependencies. MIT-licensed. Part of [Tokenmancer](https://github.com/genesis-nexus/tokenmancer).

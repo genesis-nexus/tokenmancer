@@ -1,7 +1,8 @@
 import type { JSX } from 'preact';
 
-const SNIPPET = `"github.copilot.chat.agentDebugLog.enabled": true,
-"github.copilot.chat.agentDebugLog.fileLogging.enabled": true`;
+// `agentDebugLog.enabled` (no `fileLogging`) is deprecated as of Copilot Chat
+// 0.48 — GitHub folded it into the setting below, so it's a no-op on its own.
+const SNIPPET = `"github.copilot.chat.agentDebugLog.fileLogging.enabled": true`;
 
 /** Web app fallback for SettingsBanner: no VS Code API here, so this is a
  *  static landing page — what to enable and how, step by step. */
@@ -18,7 +19,7 @@ export function SetupGuide(): JSX.Element {
             In VS Code, open <b>Settings</b> (<kbd>Cmd/Ctrl</kbd>+<kbd>,</kbd>), then click the{' '}
             <b>Open Settings (JSON)</b> icon in the top-right corner.
           </li>
-          <li>Add these two lines (or search "agentDebugLog" in the regular Settings UI):</li>
+          <li>Add this line (or search "agentDebugLog" in the regular Settings UI):</li>
         </ol>
         <pre>{SNIPPET}</pre>
         <ol start={3}>

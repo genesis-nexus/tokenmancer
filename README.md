@@ -39,9 +39,10 @@ Then open the printed URL, pick a workspace in the bar, and hit **▶ Tail live*
 Enable Copilot's agent debug log in VS Code settings first:
 
 ```json
-"github.copilot.chat.agentDebugLog.enabled": true,
 "github.copilot.chat.agentDebugLog.fileLogging.enabled": true
 ```
+
+(A second `agentDebugLog.enabled` setting existed before Copilot Chat 0.48 — it's deprecated now and folded into the setting above, so it's no longer needed.)
 
 ### VS Code extension
 
