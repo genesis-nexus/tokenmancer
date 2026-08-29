@@ -1,6 +1,6 @@
 {
   "name": "tokenmancer",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "GitHub Copilot Tokenmancer — a local-first meter that prices every Copilot agent step (AI-Credits), live from the debug log. Runs on your machine; the browser is the UI.",
   "license": "MIT",
   "type": "module",

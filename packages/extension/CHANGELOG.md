@@ -3,6 +3,15 @@
 All notable changes to the Tokenmancer extension are documented here.
 This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] — 2026-08-29
+
+### Fixed
+
+- Setup now asks for only `github.copilot.chat.agentDebugLog.fileLogging.enabled`.
+  The older `agentDebugLog.enabled` setting was folded into it and deprecated by
+  Copilot Chat 0.48 — it did nothing on its own and had started disappearing from
+  Settings UI search, so both the in-extension check and the README dropped it.
+
 ## [0.1.0] — 2026-08-17
 
 First public release.
